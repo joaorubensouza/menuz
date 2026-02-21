@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menuz AR - Visualizar prato</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav">
+        <div class="brand">Menuz <span>AR MENU</span></div>
+        <div class="row">
+          <a class="btn btn-ghost" id="back-link" href="/">Voltar ao cardapio</a>
+        </div>
+      </nav>
+
+      <section class="section">
+        <div class="viewer">
+          <model-viewer
+            id="modelViewer"
+            src=""
+            ios-src=""
+            ar
+            ar-modes="scene-viewer quick-look webxr"
+            camera-controls
+            touch-action="pan-y"
+            poster=""
+            shadow-intensity="1"
+            exposure="0.9"
+          ></model-viewer>
+          <div class="row">
+            <button class="btn" id="arButton">Ver em AR</button>
+            <span class="muted" id="arHint">Funciona melhor com boa luz.</span>
+          </div>
+          <div class="footer-note" id="arFallback"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="tag" id="item-restaurant">Restaurante</div>
+          <h2 id="item-name">Prato</h2>
+          <p class="muted" id="item-desc"></p>
+          <div class="row" style="margin-top: 12px;">
+            <div class="price" id="item-price"></div>
+            <span class="badge">Tamanho real</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/ar.js"></script>
+  </body>
+</html>

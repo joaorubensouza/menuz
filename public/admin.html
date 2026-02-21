@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menuz AR - Area do restaurante</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav">
+        <div class="brand">Menuz <span>AR MENU</span></div>
+        <div class="row">
+          <label class="theme-picker" for="theme-select">
+            <span>Paleta</span>
+            <select id="theme-select">
+              <option value="amber">Amber</option>
+              <option value="ocean">Ocean</option>
+              <option value="wine">Wine</option>
+            </select>
+          </label>
+          <a class="btn btn-outline" href="/">Voltar ao site</a>
+        </div>
+      </nav>
+
+      <section class="section" id="login-view">
+        <div class="panel" style="max-width: 520px;">
+          <div class="tag">Area do restaurante</div>
+          <h2>Login</h2>
+          <p class="muted">Acesse o painel para gerenciar pratos e QR codes.</p>
+          <form class="form-grid" id="login-form">
+            <input class="input" type="email" id="login-email" placeholder="Email" required />
+            <input class="input" type="password" id="login-password" placeholder="Senha" required />
+            <button class="btn" type="submit">Entrar</button>
+            <div class="muted" id="login-error"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="section hidden" id="dashboard-view">
+        <div class="panel">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="tag">Sessao ativa</div>
+              <div id="user-email"></div>
+            </div>
+            <button class="btn btn-outline" id="logout">Sair</button>
+          </div>
+        </div>
+
+        <div class="section" id="restaurants-panel">
+          <div class="section-title">
+            <h2>Restaurantes</h2>
+            <span class="muted" id="restaurants-count"></span>
+          </div>
+          <div class="card-grid" id="restaurants-list"></div>
+
+          <div class="panel" style="margin-top: 16px;">
+            <div class="tag">Novo restaurante</div>
+            <form class="form-grid" id="restaurant-form">
+              <div class="form-row">
+                <input class="input" id="restaurant-name" placeholder="Nome" required />
+                <input class="input" id="restaurant-slug" placeholder="Slug (opcional)" />
+              </div>
+              <textarea class="input" id="restaurant-desc" placeholder="Descricao"></textarea>
+              <div class="form-row">
+                <input class="input" id="restaurant-logo" placeholder="Logo URL (opcional)" />
+                <input class="input" id="restaurant-accent" placeholder="Cor destaque (ex: #D95F2B)" />
+                <input
+                  class="input"
+                  id="restaurant-template"
+                  placeholder="Template (ex: topo-do-mundo)"
+                />
+              </div>
+              <button class="btn" type="submit">Criar restaurante</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="section hidden" id="manage-panel">
+          <div class="section-title">
+            <h2 id="manage-title">Gerenciar restaurante</h2>
+            <button class="btn btn-outline" id="back-restaurants">Voltar</button>
+          </div>
+
+          <div class="panel">
+            <div class="tag">Dados do restaurante</div>
+            <form class="form-grid" id="restaurant-edit-form">
+              <div class="form-row">
+                <input class="input" id="edit-name" placeholder="Nome" required />
+                <input class="input" id="edit-slug" placeholder="Slug" />
+              </div>
+              <textarea class="input" id="edit-desc" placeholder="Descricao"></textarea>
+              <div class="form-row">
+                <input class="input" id="edit-logo" placeholder="Logo URL" />
+                <input class="input" id="edit-accent" placeholder="Cor destaque" />
+                <input class="input" id="edit-template" placeholder="Template" />
+              </div>
+              <button class="btn" type="submit">Salvar restaurante</button>
+            </form>
+          </div>
+
+          <div class="panel" id="client-user-panel" style="margin-top: 16px;">
+            <div class="tag">Login do cliente</div>
+            <form class="form-grid" id="client-user-form">
+              <div class="form-row">
+                <input class="input" id="client-email" placeholder="Email do cliente" required />
+                <input class="input" id="client-password" placeholder="Senha provisoria" required />
+              </div>
+              <button class="btn" type="submit">Criar login</button>
+              <div class="muted" id="client-user-msg"></div>
+            </form>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            <h2>Itens do menu</h2>
+            <span class="muted" id="items-count"></span>
+          </div>
+
+          <div class="table" id="items-list"></div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            <h2>Pedidos</h2>
+            <div class="row">
+              <span class="muted" id="orders-count"></span>
+              <button class="btn btn-outline" id="orders-refresh" type="button">
+                Atualizar
+              </button>
+            </div>
+          </div>
+
+          <div class="table" id="orders-list"></div>
+
+          <div class="panel" style="margin-top: 16px;">
+            <div class="tag">Criar ou editar item</div>
+            <form class="form-grid" id="item-form">
+              <input type="hidden" id="item-id" />
+              <div class="form-row">
+                <input class="input" id="item-name" placeholder="Nome" required />
+                <input class="input" id="item-price" placeholder="Preco" type="number" step="0.01" />
+              </div>
+              <textarea class="input" id="item-desc" placeholder="Descricao"></textarea>
+              <div class="form-row">
+                <input class="input" id="item-image-url" placeholder="Imagem URL" />
+                <input class="input" id="item-model-glb" placeholder="Modelo GLB URL" />
+                <input class="input" id="item-model-usdz" placeholder="Modelo USDZ URL" />
+              </div>
+              <div class="form-row">
+                <input class="input" id="item-image-file" type="file" accept="image/*" />
+                <input class="input" id="item-model-glb-file" type="file" accept=".glb" />
+                <input class="input" id="item-model-usdz-file" type="file" accept=".usdz" />
+              </div>
+              <button class="btn" type="submit">Salvar item</button>
+            </form>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="panel" id="scanner-panel">
+            <div class="tag">Scanner de prato</div>
+            <p class="muted" id="scanner-info">
+              Selecione um item para capturar fotos. Essas fotos podem ser usadas
+              depois para gerar o modelo 3D.
+            </p>
+            <div class="scanner hidden" id="scanner-view">
+              <video id="scan-video" autoplay playsinline></video>
+              <div class="row">
+                <button class="btn" id="scan-capture" type="button">Capturar foto</button>
+                <button class="btn btn-outline" id="scan-stop" type="button">Parar camera</button>
+                <div class="muted" id="scan-count"></div>
+              </div>
+              <div class="thumb-grid" id="scan-thumbs"></div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            <h2>Fila 3D</h2>
+            <span class="muted" id="model-jobs-count"></span>
+          </div>
+
+          <div class="panel">
+            <div class="tag">Novo job</div>
+            <form class="form-grid" id="model-job-form">
+              <div class="form-row">
+                <select class="input" id="model-job-item" required>
+                  <option value="">Selecione o prato</option>
+                </select>
+                <select class="input" id="model-job-source" required>
+                  <option value="scanner">Scanner no app</option>
+                  <option value="upload">Upload de fotos</option>
+                  <option value="api">API de IA</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <select class="input" id="model-job-provider" required>
+                  <option value="manual">Manual</option>
+                </select>
+                <input class="input" id="model-job-ai-model" placeholder="Modelo IA (ex: meshy-6)" />
+              </div>
+              <label class="row" style="gap: 8px;">
+                <input type="checkbox" id="model-job-auto" />
+                <span class="muted">Geracao automatica (beta)</span>
+              </label>
+              <input
+                class="input"
+                id="model-job-images"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+              />
+              <textarea class="input" id="model-job-notes" placeholder="Observacoes para o job"></textarea>
+              <button class="btn" type="submit">Adicionar na fila</button>
+              <div class="muted" id="ai-config-msg"></div>
+              <div class="muted" id="model-job-msg"></div>
+            </form>
+          </div>
+
+          <div class="table" id="model-jobs-list" style="margin-top: 16px;"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="lizz-chatbot hidden" id="lizz-chatbot">
+      <button class="lizz-toggle" id="lizz-toggle" type="button" aria-label="Abrir assistente Lizz">
+        <span class="lizz-avatar">L</span>
+        <span class="lizz-label">Lizz</span>
+      </button>
+      <div class="lizz-panel hidden" id="lizz-panel">
+        <div class="lizz-head">
+          <div class="row" style="gap: 8px;">
+            <span class="lizz-avatar small">L</span>
+            <div>
+              <strong>Lizz</strong>
+              <div class="muted" style="font-size: 0.82rem;">Assistente do painel</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="lizz-close" type="button">Fechar</button>
+        </div>
+        <div class="lizz-status">
+          <span class="dot"></span>
+          <span>Online para te ajudar com o restaurante</span>
+        </div>
+        <div class="lizz-messages" id="lizz-messages"></div>
+        <div class="lizz-quick">
+          <button class="btn btn-outline" type="button" data-lizz-quick="Abrir criacao de item">Criar item</button>
+          <button class="btn btn-outline" type="button" data-lizz-quick="Abrir fila 3D">Fila 3D</button>
+          <button class="btn btn-outline" type="button" data-lizz-quick="Abrir pedidos">Pedidos</button>
+        </div>
+        <form class="lizz-form" id="lizz-form">
+          <input class="input" id="lizz-input" placeholder="Pergunte algo para a Lizz" />
+          <button class="btn" type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="qr-modal hidden" id="qr-modal">
+      <div class="qr-content">
+        <div class="tag">QR Code</div>
+        <img id="qr-image" alt="QR code" />
+        <div class="muted" id="qr-link"></div>
+        <button class="btn" id="qr-close">Fechar</button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="/admin.js"></script>
+  </body>
+</html>

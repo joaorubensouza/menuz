@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menuz AR - Cardapio com Realidade Aumentada</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav">
+        <div class="brand">Menuz <span>AR MENU</span></div>
+        <div class="row">
+          <label class="theme-picker" for="theme-select">
+            <span>Paleta</span>
+            <select id="theme-select">
+              <option value="amber">Amber</option>
+              <option value="ocean">Ocean</option>
+              <option value="wine">Wine</option>
+            </select>
+          </label>
+          <button class="btn btn-outline" id="manage-toggle" type="button">
+            Area do restaurante
+          </button>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="badge">Realidade aumentada</div>
+        <h1>Cardapio digital com AR, sem precisar baixar app.</h1>
+        <p>
+          Mostre o prato em tamanho real no celular. QR Code na mesa, experiencia
+          imersiva e decisao mais rapida.
+        </p>
+        <div class="row">
+          <button class="btn" id="cta-menu">Acessar cardapio</button>
+          <button class="btn btn-outline" id="cta-demo">Ver demo AR</button>
+        </div>
+      </section>
+
+      <section class="section" id="gate-section">
+        <div class="panel">
+          <div class="tag">Acesso rapido</div>
+          <h3>Abra o cardapio do seu restaurante</h3>
+          <p class="muted">
+            Use o QR Code na mesa ou digite o codigo do restaurante abaixo.
+          </p>
+          <div class="form-row" style="margin-top: 12px;">
+            <input class="input" id="code-input" placeholder="codigo do restaurante" />
+            <button class="btn" id="code-button" type="button">Abrir cardapio</button>
+          </div>
+          <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
+          <div class="form-row" style="margin-top: 12px;">
+            <select class="input" id="restaurant-select">
+              <option value="">Selecione um restaurante</option>
+            </select>
+            <button class="btn" id="restaurant-open-button" type="button">Abrir cardapio</button>
+          </div>
+          <div class="muted" id="code-error" style="margin-top: 8px;"></div>
+        </div>
+      </section>
+
+      <section class="section hidden" id="manage-section">
+        <div class="panel" style="max-width: 560px;">
+          <div class="tag">Area do restaurante</div>
+          <h3>Entrar para gerenciar</h3>
+          <p class="muted">Use seu email e senha para abrir o painel completo.</p>
+          <form class="form-grid" id="quick-login-form" style="margin-top: 12px;">
+            <input class="input" type="email" id="quick-login-email" placeholder="Email" required />
+            <input class="input" type="password" id="quick-login-password" placeholder="Senha" required />
+            <button class="btn" type="submit">Entrar no painel</button>
+            <div class="muted" id="quick-login-msg"></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="panel">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="tag">Como funciona</div>
+              <h3>QR Code -> Web AR -> Pedido</h3>
+              <p class="muted">
+                O cliente abre o QR Code, ve o prato em tamanho real e decide
+                mais rapido.
+              </p>
+            </div>
+            <div class="badge">sem app</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section hidden" id="menu-section">
+        <div class="section-title">
+          <h2 id="menu-title">Menu</h2>
+          <span class="muted" id="menu-subtitle"></span>
+        </div>
+        <div class="card-grid" id="menu-list"></div>
+      </section>
+    </div>
+
+    <div class="order-bar hidden" id="order-bar">
+      <div>
+        <div class="tag">Seu pedido</div>
+        <div id="order-summary"></div>
+      </div>
+      <button class="btn" id="order-open">Finalizar pedido</button>
+    </div>
+
+    <div class="order-modal hidden" id="order-modal">
+      <div class="order-content">
+        <div class="row" style="justify-content: space-between;">
+          <div>
+            <div class="tag">Pedido</div>
+            <h3>Revise antes de enviar</h3>
+          </div>
+          <button class="btn btn-outline" id="order-close">Fechar</button>
+        </div>
+        <div class="divider"></div>
+        <div id="order-items"></div>
+        <div class="divider"></div>
+        <div class="form-row">
+          <input class="input" id="order-table" placeholder="Mesa (ex: 12)" />
+          <button class="btn" id="order-submit">Enviar pedido</button>
+        </div>
+        <div class="muted" id="order-message" style="margin-top: 8px;"></div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

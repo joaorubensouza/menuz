@@ -1,0 +1,457 @@
+{
+  "users": [
+    {
+      "id": "u-master",
+      "email": "admin@menuz.local",
+      "password": "admin123",
+      "role": "master"
+    },
+    {
+      "id": "u-bistro",
+      "email": "bistro@menuz.local",
+      "password": "cliente123",
+      "role": "client",
+      "restaurantId": "r-bistro"
+    },
+    {
+      "id": "u-8387265b-4916-44ef-9f5c-d4503dca63c1",
+      "email": "topo@gmail.com",
+      "password": "topo123",
+      "role": "client",
+      "restaurantId": "r-topo-mg"
+    }
+  ],
+  "restaurants": [
+    {
+      "id": "r-bistro",
+      "name": "Bistro Aurora",
+      "slug": "bistro-aurora",
+      "description": "Menu de exemplo com AR.",
+      "logo": "",
+      "theme": {
+        "accent": "#D95F2B"
+      }
+    },
+    {
+      "id": "r-21b3fd2a-00d9-47a4-9398-327c270735ae",
+      "name": "diamond Restaurante",
+      "slug": "diamond-restaurante",
+      "description": "teste diamond",
+      "logo": "",
+      "theme": {
+        "accent": "#D95F2B"
+      }
+    },
+    {
+      "id": "r-c624e45f-e1ee-4de6-9d84-b438737e43b8",
+      "name": "diamon",
+      "slug": "diamon",
+      "description": "",
+      "logo": "",
+      "theme": {
+        "accent": "#D95F2B"
+      }
+    },
+    {
+      "id": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama",
+      "slug": "alfama",
+      "description": "Alfama restaurantes",
+      "logo": "",
+      "theme": {
+        "accent": "#D95F2B"
+      }
+    },
+    {
+      "id": "r-15750345-16d4-4ef7-a0d4-ace4895eebbd",
+      "name": "jessica",
+      "slug": "jessica",
+      "description": "kes les",
+      "logo": "",
+      "theme": {
+        "accent": "#D95F2B"
+      }
+    },
+    {
+      "id": "r-topo-mg",
+      "name": "Topo do Mundo - MG",
+      "slug": "topo-do-mundo-mg",
+      "description": "Vista panoramica, atendimento premium e experiencia AR no cardapio.",
+      "logo": "",
+      "theme": {
+        "accent": "#a93124"
+      },
+      "template": "topo-do-mundo",
+      "heroImages": [
+        "/uploads/images/topo1.webp",
+        "/uploads/images/topo2.webp",
+        "/uploads/images/topo3.webp"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "i-burger",
+      "restaurantId": "r-bistro",
+      "name": "Burger Trufa",
+      "description": "Carne alta, queijo, toque de trufa.",
+      "price": 39.9,
+      "image": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      "modelUsdz": "https://modelviewer.dev/shared-assets/models/Astronaut.usdz",
+      "scans": []
+    },
+    {
+      "id": "i-pasta",
+      "restaurantId": "r-bistro",
+      "name": "Pasta Basilico",
+      "description": "Massa artesanal, pesto fresco e parmesao.",
+      "price": 44.9,
+      "image": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      "modelUsdz": "https://modelviewer.dev/shared-assets/models/Astronaut.usdz",
+      "scans": []
+    },
+    {
+      "id": "i-salmao",
+      "restaurantId": "r-bistro",
+      "name": "Salmao Brasa",
+      "description": "Grelhado na brasa, legumes e molho citrico.",
+      "price": 58.9,
+      "image": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      "modelUsdz": "https://modelviewer.dev/shared-assets/models/Astronaut.usdz",
+      "scans": []
+    },
+    {
+      "id": "i-tarte",
+      "restaurantId": "r-bistro",
+      "name": "Tartelete Cacau",
+      "description": "Chocolate intenso, frutas vermelhas e creme.",
+      "price": 29.9,
+      "image": "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      "modelUsdz": "https://modelviewer.dev/shared-assets/models/Astronaut.usdz",
+      "scans": []
+    },
+    {
+      "id": "i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama hambúrguer",
+      "description": "Hambúrguer dos alfamas",
+      "price": 34,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": [
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/b5928be2-bfe0-4490-9cf3-9a1bdb1e4382.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/094fa58a-865b-4e5f-907b-7c39099b5829.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/54426781-145d-49cb-9e02-de9e6e7d200e.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/88ac133c-b27f-465f-a254-f6a53bce4f59.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/74650ed1-856f-42ae-bf1a-10b676630b03.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/11dd61a9-c6df-427d-b2ac-69cd2f53d23a.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/11d1e291-e887-4fae-8507-b0d32b6a7111.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/2503b8b7-fc0a-4bdb-901c-40cfe4c081a7.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/0598ac47-4311-408e-979b-7d23a31fa53e.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/b2a5e0e8-22c2-4674-b0d9-1a117f25d0f0.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/d94d4c15-4bec-4c65-94b3-b0b05421e14a.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/2fa1beef-82f9-4f21-a6d3-763dfffbb7da.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/18ccf715-1ee2-4271-90bd-7fd4dd6f37fd.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/ee2d0268-3edc-4ea1-b66a-220cc3be40a4.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/88f53deb-d8ec-41b0-95d7-6ec23c807247.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/6ef2d389-7159-4b05-9785-29acc07f64a1.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/6b153982-8944-4ca2-b0a2-e19ab997d9f8.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/aa57a9d0-b608-45d2-8a5a-8ec1ec26dd4e.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/6eb33314-b590-440d-80a3-d95c33dd1366.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/95f2167e-58af-49f3-9fe1-ddf3a352fdba.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/7f56789a-abe6-4b54-b636-52ea2703b732.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/98d1e962-b9ac-410f-9a06-862d62666ae3.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/950046b5-ee22-4a00-ac8e-186db1b6b230.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/7b8b72e5-efcf-4fc9-8890-a49242dc4857.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/171a11aa-2cbb-47ef-bbce-c5000dac48d1.jpg",
+        "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/b134c44b-a20d-4852-a3f4-fe346c656a86.jpg"
+      ]
+    },
+    {
+      "id": "i-c91d0272-8a3e-4a7f-b404-7f182d76f1f7",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama hambúrguer",
+      "description": "Hambúrguer dos alfamas",
+      "price": 34,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-12e7f38d-204f-42a5-ba7b-45108384efc1",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama hambúrguer",
+      "description": "Hambúrguer dos alfamas",
+      "price": 34,
+      "image": "/uploads/images/1581d1f8-7432-4881-8ebd-d0d2785b7d60.jpeg",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-880bcef6-b307-4359-b257-f54579ddf52f",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama hambúrguer",
+      "description": "Hambúrguer dos alfamas",
+      "price": 34,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-1106d28b-2af9-4c37-b0cb-4abe3df26829",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Alfama hambúrguer",
+      "description": "Hambúrguer dos alfamas",
+      "price": 34,
+      "image": "/uploads/images/47ca3d4d-4702-4f1b-b088-a30eb8f4c87d.jpeg",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-818b32a0-256a-4d40-9036-5578b31baf9e",
+      "restaurantId": "r-a4f022d5-862b-4865-b399-43bf12b0b90e",
+      "name": "Teste mouse",
+      "description": "",
+      "price": 33,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-topo-filet",
+      "restaurantId": "r-topo-mg",
+      "name": "Filet ao molho da casa",
+      "description": "Filet alto, pure de batata trufado e legumes salteados.",
+      "price": 84.9,
+      "image": "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "/uploads/models/Mulher.glb",
+      "modelUsdz": "/uploads/models/Mulher.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-topo-cheesecake",
+      "restaurantId": "r-topo-mg",
+      "name": "Cheesecake de frutas vermelhas",
+      "description": "Base crocante, creme leve e calda artesanal.",
+      "price": 32.5,
+      "image": "https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=1200&q=80",
+      "modelGlb": "/uploads/models/mala.glb",
+      "modelUsdz": "/uploads/models/mala.usdz",
+      "category": "Sobremesas",
+      "scans": []
+    },
+    {
+      "id": "i-topo-varios-pratos",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato Especial da Casa",
+      "description": "Novo prato para visualizacao AR no cardapio.",
+      "price": 89.9,
+      "image": "/uploads/images/varios-pratos.webp",
+      "modelGlb": "/uploads/models/varios-pratos.glb",
+      "modelUsdz": "/uploads/models/varios-pratos.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-48f0851e-11ee-429c-846f-9badb75c987b",
+      "restaurantId": "r-topo-mg",
+      "name": "bolo fofo",
+      "description": "",
+      "price": 80,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-cb56b9ef-3707-489f-8c5b-4fc38a5e05ce",
+      "restaurantId": "r-topo-mg",
+      "name": "bolo fofo",
+      "description": "bolo bem fofo",
+      "price": 80,
+      "image": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-a66f7a4c-e086-403b-9ad8-f2c23b319847",
+      "restaurantId": "r-topo-mg",
+      "name": "bolo fofo",
+      "description": "bolo bem fofo",
+      "price": 80,
+      "image": "/uploads/images/790f5083-d609-4a7a-a956-8f7501a96167.jpg",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": []
+    },
+    {
+      "id": "i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc",
+      "restaurantId": "r-topo-mg",
+      "name": "Bolo teste",
+      "description": "Bolo teste",
+      "price": 97,
+      "image": "/uploads/images/3909015a-3e3f-4646-9154-e12bc1ed519b.jpeg",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "scans": [
+        "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/c9ec5bf9-9599-49e5-8ada-e42fa4437404.jpg",
+        "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/618075e8-7f8a-4370-a3c2-4c92282189b1.jpg",
+        "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/053f33b0-da8f-43ef-b203-d35dca0df306.jpg"
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "id": "o-eb99a0a0-a635-49c4-a317-f59707087049",
+      "restaurantId": "r-bistro",
+      "table": "12",
+      "items": [
+        {
+          "id": "i-tarte",
+          "name": "Tartelete Cacau",
+          "price": 29.9,
+          "qty": 1
+        },
+        {
+          "id": "i-salmao",
+          "name": "Salmao Brasa",
+          "price": 58.9,
+          "qty": 5
+        }
+      ],
+      "total": 324.4,
+      "status": "entregue",
+      "createdAt": "2026-02-13T13:50:31.351Z"
+    },
+    {
+      "id": "o-4e67e41a-8ac5-448d-900d-287af3c45cbc",
+      "restaurantId": "r-topo-mg",
+      "table": "12",
+      "items": [
+        {
+          "id": "i-topo-filet",
+          "name": "Filet ao molho da casa",
+          "price": 84.9,
+          "qty": 6
+        },
+        {
+          "id": "i-topo-varios-pratos",
+          "name": "Prato Especial da Casa",
+          "price": 89.9,
+          "qty": 1
+        }
+      ],
+      "total": 599.3,
+      "status": "entregue",
+      "createdAt": "2026-02-13T22:53:22.185Z"
+    },
+    {
+      "id": "o-d10b8130-6c9e-4483-a686-9e644a8bc329",
+      "restaurantId": "r-topo-mg",
+      "table": "777",
+      "items": [
+        {
+          "id": "i-topo-filet",
+          "name": "Filet ao molho da casa",
+          "price": 84.9,
+          "qty": 1
+        },
+        {
+          "id": "i-topo-varios-pratos",
+          "name": "Prato Especial da Casa",
+          "price": 89.9,
+          "qty": 1
+        }
+      ],
+      "total": 174.8,
+      "status": "entregue",
+      "createdAt": "2026-02-13T22:56:20.128Z"
+    }
+  ],
+  "modelJobs": [
+    {
+      "id": "mj-33de31eb-ff80-4ac2-9def-d91bcad66917",
+      "restaurantId": "r-topo-mg",
+      "itemId": "i-48f0851e-11ee-429c-846f-9badb75c987b",
+      "sourceType": "upload",
+      "autoMode": true,
+      "status": "enviado",
+      "notes": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "createdAt": "2026-02-15T02:41:13.410Z",
+      "updatedAt": "2026-02-15T02:41:24.911Z",
+      "createdBy": "u-master"
+    },
+    {
+      "id": "mj-f40403be-d349-4f9b-99c1-bc6947044a32",
+      "restaurantId": "r-topo-mg",
+      "itemId": "i-cb56b9ef-3707-489f-8c5b-4fc38a5e05ce",
+      "sourceType": "api",
+      "provider": "meshy",
+      "aiModel": "meshy-6",
+      "autoMode": true,
+      "status": "enviado",
+      "notes": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "providerTaskId": "",
+      "providerStatus": "",
+      "createdAt": "2026-02-15T03:32:39.710Z",
+      "updatedAt": "2026-02-15T03:32:39.710Z",
+      "createdBy": "u-master"
+    },
+    {
+      "id": "mj-72082243-549f-4b05-a393-cba6bd33df0a",
+      "restaurantId": "r-topo-mg",
+      "itemId": "i-cb56b9ef-3707-489f-8c5b-4fc38a5e05ce",
+      "sourceType": "upload",
+      "provider": "meshy",
+      "aiModel": "meshy-6",
+      "autoMode": false,
+      "status": "enviado",
+      "notes": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "providerTaskId": "",
+      "providerStatus": "",
+      "createdAt": "2026-02-15T03:33:07.535Z",
+      "updatedAt": "2026-02-15T03:33:07.535Z",
+      "createdBy": "u-master"
+    },
+    {
+      "id": "mj-4c17cfc9-5021-431f-a867-e75ab7fdeca2",
+      "restaurantId": "r-topo-mg",
+      "itemId": "i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc",
+      "sourceType": "upload",
+      "provider": "manual",
+      "aiModel": "meshy-6",
+      "autoMode": true,
+      "status": "enviado",
+      "notes": "",
+      "modelGlb": "",
+      "modelUsdz": "",
+      "referenceImages": [
+        "/uploads/job-images/mj-4c17cfc9-5021-431f-a867-e75ab7fdeca2/96dc035c-aa2b-45cd-8059-6f1e42c245ee.jpeg",
+        "/uploads/job-images/mj-4c17cfc9-5021-431f-a867-e75ab7fdeca2/fe7406b2-4053-422c-a850-5477dd0e333d.jpeg"
+      ],
+      "providerTaskId": "",
+      "providerStatus": "",
+      "createdAt": "2026-02-15T03:57:15.725Z",
+      "updatedAt": "2026-02-15T03:57:39.657Z",
+      "createdBy": "u-master"
+    }
+  ]
+}

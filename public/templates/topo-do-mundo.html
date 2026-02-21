@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menuz | Topo do Mundo</title>
+    <link rel="stylesheet" href="/topo.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-spacer" aria-hidden="true"></div>
+      <div class="logo-wrap">
+        <p class="logo-title">TOPO DO MUNDO</p>
+        <p class="logo-sub">restaurante</p>
+      </div>
+      <button class="search-btn" id="search-toggle" type="button" aria-label="Buscar">
+        &#9906;
+      </button>
+    </header>
+
+    <section class="search-wrap hidden" id="search-wrap">
+      <input id="search-input" type="search" placeholder="Buscar no cardapio" />
+    </section>
+
+    <section class="hero">
+      <button class="hero-nav prev" id="hero-prev" type="button" aria-label="Anterior">
+        &#10094;
+      </button>
+      <div class="hero-track" id="hero-track"></div>
+      <button class="hero-nav next" id="hero-next" type="button" aria-label="Proximo">
+        &#10095;
+      </button>
+    </section>
+
+    <section class="hero-meta">
+      <div class="hero-dots" id="hero-dots"></div>
+      <div class="title-row">
+        <h1 id="restaurant-name">Carregando...</h1>
+        <div class="title-tools">
+          <button class="icon-text" type="button">Aa</button>
+          <button class="icon-text" type="button">&#8901;</button>
+        </div>
+      </div>
+      <p id="restaurant-desc"></p>
+    </section>
+
+    <main class="page">
+      <section class="mode-strip">
+        <button class="mode-chip active" type="button">Menu</button>
+        <button class="mode-chip" type="button">Fondue</button>
+        <button class="mode-chip" type="button">Desserts</button>
+        <button class="mode-chip dark" type="button">Menu Personnalite</button>
+      </section>
+
+      <section class="tabs" id="category-list"></section>
+
+      <section class="menu-sections" id="menu-list"></section>
+      <section class="empty-state hidden" id="empty-state">
+        Nenhum item encontrado para este filtro.
+      </section>
+    </main>
+
+    <button class="cart-fab hidden" id="cart-button">Ver pedido</button>
+
+    <div class="cart-modal hidden" id="cart-modal">
+      <div class="cart-panel">
+        <div class="cart-head">
+          <div>
+            <p class="brand small">Pedido da mesa</p>
+            <h2>Resumo do pedido</h2>
+          </div>
+          <button class="close-btn" id="cart-close">Fechar</button>
+        </div>
+
+        <div class="cart-items" id="cart-items"></div>
+
+        <div class="cart-foot">
+          <input id="table-input" type="text" placeholder="Mesa (ex: 12)" />
+          <button id="cart-submit">Enviar pedido</button>
+          <p id="cart-message"></p>
+        </div>
+      </div>
+    </div>
+
+    <script src="/topo.js"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+node_modules
+uploads/images/*
+uploads/models/*
+uploads/job-images/*
+uploads/scans/*
+.env
