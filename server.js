@@ -3,10 +3,35 @@ const path = require("path");
 const fs = require("fs/promises");
 const fsSync = require("fs");
 const multer = require("multer");
-const { randomUUID } = require("crypto");
+const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require("crypto");
+
+function loadLocalEnv() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fsSync.existsSync(envPath)) return;
+  const raw = fsSync.readFileSync(envPath, "utf-8");
+  raw.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) return;
+    const key = trimmed.slice(0, separatorIndex).trim();
+    if (!key || process.env[key] !== undefined) return;
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  });
+}
+
+loadLocalEnv();
 
 const app = express();
 const PORT = process.env.PORT || 5170;
+app.disable("x-powered-by");
 
 const DATA_PATH = path.join(__dirname, "data", "db.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -17,9 +42,113 @@ const SCANS_DIR = path.join(UPLOADS_DIR, "scans");
 const JOB_IMAGES_DIR = path.join(UPLOADS_DIR, "job-images");
 const MESHY_API_BASE = "https://api.meshy.ai/openapi/v1";
 const MESHY_DEFAULT_MODEL = process.env.MESHY_AI_MODEL || "meshy-6";
+const MESHY_MAX_REFERENCE_IMAGES = Number(process.env.MESHY_MAX_REFERENCE_IMAGES || 4);
+const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 24 * 60 * 60 * 1000);
+const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS || 15 * 60 * 1000);
+const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS || 6);
+const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000);
 
 const tokens = new Map();
+const loginAttempts = new Map();
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmail(value) {
+  return (value || "").toString().trim().toLowerCase();
+}
+
+function hashPassword(plainPassword) {
+  const password = (plainPassword || "").toString();
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPasswordHash(plainPassword, passwordHash) {
+  const parts = (passwordHash || "").toString().split(":");
+  if (parts.length !== 3 || parts[0] !== "scrypt") {
+    return false;
+  }
+  const [, salt, storedHashHex] = parts;
+  if (!salt || !storedHashHex) return false;
+  try {
+    const computedHashHex = scryptSync((plainPassword || "").toString(), salt, 64).toString("hex");
+    const storedHash = Buffer.from(storedHashHex, "hex");
+    const computedHash = Buffer.from(computedHashHex, "hex");
+    if (storedHash.length !== computedHash.length) {
+      return false;
+    }
+    return timingSafeEqual(storedHash, computedHash);
+  } catch (err) {
+    return false;
+  }
+}
+
+function verifyUserPassword(user, plainPassword) {
+  if (user && user.passwordHash) {
+    return verifyPasswordHash(plainPassword, user.passwordHash);
+  }
+  return user && user.password === plainPassword;
+}
+
+function isPasswordValid(password) {
+  const value = (password || "").toString();
+  return value.length >= 8 && value.length <= 128;
+}
+
+function getClientIp(req) {
+  const forwarded = (req.headers["x-forwarded-for"] || "").toString().split(",")[0].trim();
+  if (forwarded) return forwarded;
+  return req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : "unknown";
+}
+
+function getLoginAttempt(ip) {
+  const key = ip || "unknown";
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  if (!current) return { key, state: null, now };
+
+  if (current.lockedUntil && current.lockedUntil > now) {
+    return { key, state: current, now };
+  }
+  if (now - current.firstFailedAt > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
+    return { key, state: null, now };
+  }
+  if (current.lockedUntil && current.lockedUntil <= now) {
+    loginAttempts.delete(key);
+    return { key, state: null, now };
+  }
+  return { key, state: current, now };
+}
+
+function isLoginBlocked(ip) {
+  const { state, now } = getLoginAttempt(ip);
+  if (!state || !state.lockedUntil || state.lockedUntil <= now) {
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+  const retryAfterSeconds = Math.max(1, Math.ceil((state.lockedUntil - now) / 1000));
+  return { blocked: true, retryAfterSeconds };
+}
+
+function registerLoginFailure(ip) {
+  const { key, state, now } = getLoginAttempt(ip);
+  if (!state) {
+    loginAttempts.set(key, { count: 1, firstFailedAt: now, lockedUntil: 0 });
+    return;
+  }
+  const nextCount = state.count + 1;
+  const nextState = { ...state, count: nextCount };
+  if (nextCount >= LOGIN_MAX_ATTEMPTS) {
+    nextState.lockedUntil = now + LOGIN_LOCK_MS;
+  }
+  loginAttempts.set(key, nextState);
+}
+
+function clearLoginFailures(ip) {
+  loginAttempts.delete(ip || "unknown");
+}
 
 function ensureDirSync(dir) {
   if (!fsSync.existsSync(dir)) {
@@ -62,15 +191,22 @@ function getToken(req) {
 
 async function requireAuth(req, res, next) {
   const token = getToken(req);
-  const userId = tokens.get(token);
-  if (!userId) {
+  const session = tokens.get(token);
+  if (!session || !session.userId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  if (session.expiresAt <= Date.now()) {
+    tokens.delete(token);
     return res.status(401).json({ error: "unauthorized" });
   }
   const db = await readDb();
-  const user = db.users.find((u) => u.id === userId);
+  const user = db.users.find((u) => u.id === session.userId);
   if (!user) {
+    tokens.delete(token);
     return res.status(401).json({ error: "unauthorized" });
   }
+  session.expiresAt = Date.now() + TOKEN_TTL_MS;
+  tokens.set(token, session);
   req.user = user;
   req.db = db;
   next();
@@ -148,14 +284,16 @@ async function removeDirIfExists(dirPath) {
 }
 
 function getAiProviders() {
+  const hasMeshy = Boolean(process.env.MESHY_API_KEY);
   return [
     {
       id: "meshy",
       label: "Meshy",
-      enabled: Boolean(process.env.MESHY_API_KEY),
+      enabled: hasMeshy,
       supportsAuto: true,
-      notes: process.env.MESHY_API_KEY
-        ? "Pronto para gerar imagem para 3D."
+      supportsMultiImage: true,
+      notes: hasMeshy
+        ? `Pronto para gerar 3D (ate ${MESHY_MAX_REFERENCE_IMAGES} fotos por job).`
         : "Defina MESHY_API_KEY para habilitar."
     },
     {
@@ -195,6 +333,20 @@ function isRemoteHttpUrl(value) {
   return /^https?:\/\//i.test(value || "");
 }
 
+function fileExt(filename) {
+  return (path.extname(filename || "") || "").toLowerCase();
+}
+
+function isImageFile(file) {
+  return IMAGE_EXTENSIONS.has(fileExt(file && file.originalname));
+}
+
+function isModelFile(file, expectedExt) {
+  const ext = fileExt(file && file.originalname);
+  if (!MODEL_EXTENSIONS.has(ext)) return false;
+  return ext === expectedExt;
+}
+
 async function localImageToDataUri(filePath) {
   const ext = path.extname(filePath || "").toLowerCase();
   if (!IMAGE_EXTENSIONS.has(ext)) {
@@ -206,66 +358,102 @@ async function localImageToDataUri(filePath) {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-async function buildJobImageInput(item, job) {
-  const candidates = [];
+async function resolveImageCandidate(candidate) {
+  if (!candidate) return "";
+  if (isRemoteHttpUrl(candidate)) {
+    const ext = path.extname(new URL(candidate).pathname || "").toLowerCase();
+    if (ext && !IMAGE_EXTENSIONS.has(ext)) {
+      return "";
+    }
+    return candidate;
+  }
+  const localPath = urlToUploadFilePath(candidate);
+  if (!localPath) return "";
+  return localImageToDataUri(localPath);
+}
+
+async function buildJobImageInputs(item, job) {
   const referenceImages = Array.isArray(job && job.referenceImages)
-    ? job.referenceImages
+    ? [...job.referenceImages].reverse()
     : [];
-  if (referenceImages.length > 0) {
-    candidates.push(referenceImages[referenceImages.length - 1]);
-  }
-  const scans = Array.isArray(item.scans) ? item.scans : [];
-  if (scans.length > 0) {
-    candidates.push(scans[scans.length - 1]);
-  }
-  if (item.image) {
-    candidates.push(item.image);
+  const scans = Array.isArray(item.scans) ? [...item.scans].reverse() : [];
+  const orderedCandidates = [
+    ...referenceImages,
+    ...scans,
+    item.image || ""
+  ].filter(Boolean);
+  const unique = [];
+  const seen = new Set();
+
+  for (const candidate of orderedCandidates) {
+    const imageInput = await resolveImageCandidate(candidate);
+    if (!imageInput || seen.has(imageInput)) continue;
+    seen.add(imageInput);
+    unique.push(imageInput);
+    if (unique.length >= MESHY_MAX_REFERENCE_IMAGES) break;
   }
 
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    if (isRemoteHttpUrl(candidate)) {
-      const ext = path.extname(new URL(candidate).pathname || "").toLowerCase();
-      if (ext && !IMAGE_EXTENSIONS.has(ext)) {
-        continue;
-      }
-      return candidate;
-    }
-    const localPath = urlToUploadFilePath(candidate);
-    if (!localPath) continue;
-    const dataUri = await localImageToDataUri(localPath);
-    if (dataUri) {
-      return dataUri;
-    }
-  }
-
-  return "";
+  return unique;
 }
 
 function mapMeshyStatus(meshyStatus) {
   const status = (meshyStatus || "").toString().toUpperCase();
-  if (status === "SUCCEEDED") return "revisao";
-  if (status === "FAILED" || status === "CANCELED") return "erro";
+  if (status === "SUCCEEDED" || status === "COMPLETED") return "revisao";
+  if (["FAILED", "ERROR", "CANCELED", "CANCELLED"].includes(status)) return "erro";
   return "processando";
 }
 
-async function startMeshyImageTo3D(imageInput, options = {}) {
-  const apiKey = process.env.MESHY_API_KEY;
-  if (!apiKey) {
-    throw new Error("meshy_key_missing");
+function extractMeshyTaskId(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const candidates = [
+    payload.result,
+    payload.id,
+    payload.task_id,
+    payload.taskId,
+    payload.task && payload.task.id,
+    payload.data && payload.data.id,
+    payload.result && payload.result.id
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
   }
+  return "";
+}
 
+function buildMeshyStartRequest(imageInputs, options = {}) {
+  const aiModel = (options.aiModel || MESHY_DEFAULT_MODEL || "").toString().trim();
   const payload = {
-    image_url: imageInput,
-    ai_model: options.aiModel || MESHY_DEFAULT_MODEL,
     should_texture: true
   };
-
+  if (aiModel) payload.ai_model = aiModel;
   if (options.targetPolycount) {
     payload.target_polycount = Number(options.targetPolycount);
   }
 
-  const res = await fetch(`${MESHY_API_BASE}/image-to-3d`, {
+  if (imageInputs.length > 1) {
+    payload.image_urls = imageInputs.slice(0, MESHY_MAX_REFERENCE_IMAGES);
+    return { endpoint: "multi-image-to-3d", payload };
+  }
+
+  payload.image_url = imageInputs[0];
+  return { endpoint: "image-to-3d", payload };
+}
+
+async function startMeshyImageTo3D(imageInputs, options = {}) {
+  const apiKey = process.env.MESHY_API_KEY;
+  if (!apiKey) {
+    throw new Error("meshy_key_missing");
+  }
+  const normalizedInputs = Array.isArray(imageInputs)
+    ? imageInputs.filter(Boolean)
+    : [imageInputs].filter(Boolean);
+  if (!normalizedInputs.length) {
+    throw new Error("meshy_image_input_missing");
+  }
+  const { endpoint, payload } = buildMeshyStartRequest(normalizedInputs, options);
+  const res = await fetch(`${MESHY_API_BASE}/${endpoint}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -275,31 +463,91 @@ async function startMeshyImageTo3D(imageInput, options = {}) {
   });
   if (!res.ok) {
     const errorBody = await res.text();
-    throw new Error(`meshy_start_failed:${res.status}:${errorBody.slice(0, 300)}`);
+    throw new Error(
+      `meshy_start_failed:${endpoint}:${res.status}:${errorBody.slice(0, 300)}`
+    );
   }
   const data = await res.json();
-  const taskId = data.result || data.id || data.task_id;
+  const taskId = extractMeshyTaskId(data);
   if (!taskId) {
     throw new Error("meshy_task_id_missing");
   }
-  return { taskId };
+  return { taskId, endpoint };
 }
 
-async function fetchMeshyTask(taskId) {
+function getMeshyTaskEndpoints(endpointHint) {
+  const hint = (endpointHint || "").toString().toLowerCase().trim();
+  const ordered = [];
+  if (hint.includes("multi-image-to-3d")) {
+    ordered.push("multi-image-to-3d", "image-to-3d");
+  } else if (hint.includes("image-to-3d")) {
+    ordered.push("image-to-3d", "multi-image-to-3d");
+  } else {
+    ordered.push("image-to-3d", "multi-image-to-3d");
+  }
+  return [...new Set(ordered)];
+}
+
+async function fetchMeshyTask(taskId, endpointHint = "") {
   const apiKey = process.env.MESHY_API_KEY;
   if (!apiKey) {
     throw new Error("meshy_key_missing");
   }
-  const res = await fetch(`${MESHY_API_BASE}/image-to-3d/${encodeURIComponent(taskId)}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`
+  const triedErrors = [];
+  for (const endpoint of getMeshyTaskEndpoints(endpointHint)) {
+    const res = await fetch(`${MESHY_API_BASE}/${endpoint}/${encodeURIComponent(taskId)}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      }
+    });
+    if (res.ok) {
+      const task = await res.json();
+      return { endpoint, task };
     }
-  });
-  if (!res.ok) {
     const errorBody = await res.text();
-    throw new Error(`meshy_sync_failed:${res.status}:${errorBody.slice(0, 300)}`);
+    triedErrors.push(`${endpoint}:${res.status}:${errorBody.slice(0, 200)}`);
+    if (res.status !== 404) {
+      break;
+    }
   }
-  return res.json();
+  throw new Error(`meshy_sync_failed:${triedErrors.join(" | ")}`);
+}
+
+function extractMeshyModelUrls(taskData) {
+  const containers = [
+    taskData && taskData.model_urls,
+    taskData && taskData.result && taskData.result.model_urls,
+    taskData && taskData.result && taskData.result.modelUrls,
+    taskData && taskData.output && taskData.output.model_urls,
+    taskData && taskData.data && taskData.data.model_urls
+  ].filter(Boolean);
+
+  const urls = {};
+  containers.forEach((entry) => {
+    if (!entry || typeof entry !== "object") return;
+    if (!urls.glb && isRemoteHttpUrl(entry.glb)) urls.glb = entry.glb;
+    if (!urls.usdz && isRemoteHttpUrl(entry.usdz)) urls.usdz = entry.usdz;
+  });
+
+  if (!urls.glb) {
+    const glbCandidates = [
+      taskData && taskData.glb_url,
+      taskData && taskData.result && taskData.result.glb_url
+    ];
+    const glb = glbCandidates.find((value) => isRemoteHttpUrl(value));
+    if (glb) urls.glb = glb;
+  }
+
+  if (!urls.usdz) {
+    const usdzCandidates = [
+      taskData && taskData.usdz_url,
+      taskData && taskData.result && taskData.result.usdz_url
+    ];
+    const usdz = usdzCandidates.find((value) => isRemoteHttpUrl(value));
+    if (usdz) urls.usdz = usdz;
+  }
+
+  return urls;
 }
 
 async function downloadModelToUploads(urlValue, extension) {
@@ -317,6 +565,17 @@ async function downloadModelToUploads(urlValue, extension) {
 }
 
 ensureUploads();
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if ((req.headers["x-forwarded-proto"] || "").toString().toLowerCase() === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(PUBLIC_DIR));
@@ -390,14 +649,45 @@ app.get("/api/public/item/:id", async (req, res) => {
 });
 
 app.post("/api/login", async (req, res) => {
-  const { email, password } = req.body || {};
-  const db = await readDb();
-  const user = db.users.find((u) => u.email === email && u.password === password);
-  if (!user) {
+  const email = normalizeEmail(req.body && req.body.email);
+  const password = (req.body && req.body.password ? req.body.password : "").toString();
+  const ip = getClientIp(req);
+  const lockState = isLoginBlocked(ip);
+  if (lockState.blocked) {
+    res.setHeader("Retry-After", String(lockState.retryAfterSeconds));
+    return res.status(429).json({ error: "too_many_attempts" });
+  }
+  if (!email || !password) {
+    registerLoginFailure(ip);
     return res.status(401).json({ error: "invalid_credentials" });
   }
+  const db = await readDb();
+  const user = db.users.find((u) => normalizeEmail(u.email) === email);
+  if (!user || !verifyUserPassword(user, password)) {
+    registerLoginFailure(ip);
+    return res.status(401).json({ error: "invalid_credentials" });
+  }
+  clearLoginFailures(ip);
+
+  let changed = false;
+  if (user.email !== email) {
+    user.email = email;
+    changed = true;
+  }
+  if (!user.passwordHash) {
+    user.passwordHash = hashPassword(password);
+    delete user.password;
+    changed = true;
+  }
+  if (changed) {
+    await writeDb(db);
+  }
+
   const token = randomUUID();
-  tokens.set(token, user.id);
+  tokens.set(token, {
+    userId: user.id,
+    expiresAt: Date.now() + TOKEN_TTL_MS
+  });
   res.json({ token, user: sanitizeUser(user) });
 });
 
@@ -487,17 +777,24 @@ app.post(
   authorizeRestaurant,
   async (req, res) => {
     const db = req.db;
-    const { email, password } = req.body || {};
+    const email = normalizeEmail(req.body && req.body.email);
+    const password = (req.body && req.body.password ? req.body.password : "").toString();
     if (!email || !password) {
       return res.status(400).json({ error: "email_password_required" });
     }
-    if (db.users.some((u) => u.email === email)) {
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ error: "email_invalid" });
+    }
+    if (!isPasswordValid(password)) {
+      return res.status(400).json({ error: "password_too_weak" });
+    }
+    if (db.users.some((u) => normalizeEmail(u.email) === email)) {
       return res.status(400).json({ error: "email_in_use" });
     }
     const user = {
       id: `u-${randomUUID()}`,
       email,
-      password,
+      passwordHash: hashPassword(password),
       role: "client",
       restaurantId: req.restaurant.id
     };
@@ -682,7 +979,13 @@ const modelJobImageStorage = multer.diskStorage({
 
 const uploadModelJobImages = multer({
   storage: modelJobImageStorage,
-  limits: { files: 20, fileSize: 12 * 1024 * 1024 }
+  limits: { files: 20, fileSize: 12 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!isImageFile(file)) {
+      return cb(new Error("photos_invalid_type"));
+    }
+    cb(null, true);
+  }
 });
 
 app.post(
@@ -704,15 +1007,7 @@ app.post(
       return res.status(400).json({ error: "photos_required" });
     }
 
-    const validFiles = files.filter((file) => {
-      const ext = path.extname(file.filename || "").toLowerCase();
-      return IMAGE_EXTENSIONS.has(ext);
-    });
-    if (validFiles.length === 0) {
-      return res.status(400).json({ error: "photos_invalid_type" });
-    }
-
-    const urls = validFiles.map(
+    const urls = files.map(
       (file) => `/uploads/job-images/${req.params.id}/${file.filename}`
     );
     if (!Array.isArray(job.referenceImages)) {
@@ -766,6 +1061,7 @@ app.post(
       modelUsdz: "",
       referenceImages: [],
       providerTaskId: "",
+      providerTaskEndpoint: "",
       providerStatus: "",
       createdAt: now,
       updatedAt: now,
@@ -885,15 +1181,15 @@ app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
   }
 
   try {
-    const imageInput = await buildJobImageInput(item, job);
-    if (!imageInput) {
+    const imageInputs = await buildJobImageInputs(item, job);
+    if (!imageInputs.length) {
       return res.status(400).json({ error: "image_source_not_found" });
     }
 
     const aiModel = (req.body.aiModel || job.aiModel || MESHY_DEFAULT_MODEL)
       .toString()
       .trim();
-    const startResult = await startMeshyImageTo3D(imageInput, {
+    const startResult = await startMeshyImageTo3D(imageInputs, {
       aiModel,
       targetPolycount: req.body.targetPolycount
     });
@@ -901,11 +1197,19 @@ app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
     job.provider = provider.id;
     job.aiModel = aiModel;
     job.providerTaskId = startResult.taskId;
+    job.providerTaskEndpoint = startResult.endpoint || "";
     job.providerStatus = "SUBMITTED";
     job.status = "processando";
     job.updatedAt = new Date().toISOString();
     await writeDb(db);
-    res.json({ job });
+    res.json({
+      job,
+      task: {
+        id: startResult.taskId,
+        endpoint: startResult.endpoint,
+        imagesSent: imageInputs.length
+      }
+    });
   } catch (err) {
     job.providerStatus = "ERROR_ON_START";
     job.status = "erro";
@@ -933,16 +1237,18 @@ app.post("/api/model-jobs/:id/ai/sync", requireAuth, async (req, res) => {
   }
 
   try {
-    const taskData = await fetchMeshyTask(job.providerTaskId);
+    const providerSync = await fetchMeshyTask(
+      job.providerTaskId,
+      job.providerTaskEndpoint || ""
+    );
+    const taskData = providerSync.task || {};
     const taskStatus = (taskData.status || "").toString();
+    job.providerTaskEndpoint = providerSync.endpoint || job.providerTaskEndpoint || "";
     job.providerStatus = taskStatus;
     job.status = mapMeshyStatus(taskStatus);
 
     if (job.status === "revisao") {
-      const modelUrls =
-        taskData.model_urls ||
-        (taskData.result && taskData.result.model_urls) ||
-        {};
+      const modelUrls = extractMeshyModelUrls(taskData);
       if (modelUrls.glb && !job.modelGlb) {
         job.modelGlb = await downloadModelToUploads(modelUrls.glb, ".glb");
       }
@@ -1004,7 +1310,28 @@ const assetsStorage = multer.diskStorage({
   }
 });
 
-const uploadAssets = multer({ storage: assetsStorage });
+const uploadAssets = multer({
+  storage: assetsStorage,
+  limits: {
+    files: 3,
+    fileSize: 60 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === "image") {
+      if (!isImageFile(file)) return cb(new Error("image_invalid_type"));
+      return cb(null, true);
+    }
+    if (file.fieldname === "modelGlb") {
+      if (!isModelFile(file, ".glb")) return cb(new Error("model_glb_invalid_type"));
+      return cb(null, true);
+    }
+    if (file.fieldname === "modelUsdz") {
+      if (!isModelFile(file, ".usdz")) return cb(new Error("model_usdz_invalid_type"));
+      return cb(null, true);
+    }
+    cb(new Error("file_field_invalid"));
+  }
+});
 
 app.post(
   "/api/items/:id/assets",
@@ -1045,7 +1372,19 @@ const scanStorage = multer.diskStorage({
   }
 });
 
-const uploadScan = multer({ storage: scanStorage });
+const uploadScan = multer({
+  storage: scanStorage,
+  limits: {
+    files: 1,
+    fileSize: 12 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    if (!isImageFile(file)) {
+      return cb(new Error("photo_invalid_type"));
+    }
+    cb(null, true);
+  }
+});
 
 app.post(
   "/api/items/:id/scan",
@@ -1065,6 +1404,34 @@ app.post(
     res.json({ url, count: item.scans.length });
   }
 );
+
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: "file_too_large" });
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({ error: "too_many_files" });
+    }
+    return res.status(400).json({ error: "upload_invalid" });
+  }
+
+  const known = new Set([
+    "photos_invalid_type",
+    "image_invalid_type",
+    "model_glb_invalid_type",
+    "model_usdz_invalid_type",
+    "file_field_invalid",
+    "photo_invalid_type"
+  ]);
+  if (known.has(err.message)) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  console.error("Unhandled error", err);
+  return res.status(500).json({ error: "internal_error" });
+});
 
 app.listen(PORT, () => {
   console.log(`Menuz AR running at http://localhost:${PORT}`);

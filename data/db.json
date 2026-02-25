@@ -3,22 +3,22 @@
     {
       "id": "u-master",
       "email": "admin@menuz.local",
-      "password": "admin123",
-      "role": "master"
+      "role": "master",
+      "passwordHash": "scrypt:738b778d921ad2896586d42c6a061a98:4828a5a8b07403f114b63f7081ff76d225931fd3ad362ab523c6797986d3636cea83d507dca622be9ceb58c266730288cb780a54e30b62a0b654fa17dcb3f230"
     },
     {
       "id": "u-bistro",
       "email": "bistro@menuz.local",
-      "password": "cliente123",
       "role": "client",
-      "restaurantId": "r-bistro"
+      "restaurantId": "r-bistro",
+      "passwordHash": "scrypt:1771354abbf13435b15e9f3ae2d84891:bb2453c40f733206b5803ffa1d13501ed186f6070003f879480139b148d390b5d7d101055c2718a533979b9c01b2ed2602ba143b8896f11d5354279964991ff5"
     },
     {
       "id": "u-8387265b-4916-44ef-9f5c-d4503dca63c1",
       "email": "topo@gmail.com",
-      "password": "topo123",
       "role": "client",
-      "restaurantId": "r-topo-mg"
+      "restaurantId": "r-topo-mg",
+      "passwordHash": "scrypt:41f33ee761f0b203f7eb3cae3d5301fd:bc5f509d972c12b60fcd9868a83ae286ac2decf138dd8a789bd48821ef323a2db1a4bb7dfff73ebeeff812d44790e80ed28cb62c035c6a9af4f036000ca30ef1"
     }
   ],
   "restaurants": [
@@ -141,8 +141,8 @@
       "description": "Hambúrguer dos alfamas",
       "price": 34,
       "image": "",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/apagar.glb",
+      "modelUsdz": "/uploads/models/apagar.usdz",
       "scans": [
         "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/b5928be2-bfe0-4490-9cf3-9a1bdb1e4382.jpg",
         "/uploads/scans/i-ee1f24bb-5b6a-4e2a-a474-42a69b53c918/094fa58a-865b-4e5f-907b-7c39099b5829.jpg",
@@ -179,8 +179,8 @@
       "description": "Hambúrguer dos alfamas",
       "price": 34,
       "image": "",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/mulher%20(2).glb",
+      "modelUsdz": "/uploads/models/mulher%20(2).usdz",
       "scans": []
     },
     {
@@ -190,8 +190,8 @@
       "description": "Hambúrguer dos alfamas",
       "price": 34,
       "image": "/uploads/images/1581d1f8-7432-4881-8ebd-d0d2785b7d60.jpeg",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/miranha.glb",
+      "modelUsdz": "/uploads/models/miranha.usdz",
       "scans": []
     },
     {
@@ -201,8 +201,8 @@
       "description": "Hambúrguer dos alfamas",
       "price": 34,
       "image": "",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/bolo.glb",
+      "modelUsdz": "/uploads/models/bolo.usdz",
       "scans": []
     },
     {
@@ -212,8 +212,8 @@
       "description": "Hambúrguer dos alfamas",
       "price": 34,
       "image": "/uploads/images/47ca3d4d-4702-4f1b-b088-a30eb8f4c87d.jpeg",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/messi.glb",
+      "modelUsdz": "/uploads/models/messi.usdz",
       "scans": []
     },
     {
@@ -223,8 +223,8 @@
       "description": "",
       "price": 33,
       "image": "",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/mouse.glb",
+      "modelUsdz": "/uploads/models/mouse.usdz",
       "scans": []
     },
     {
