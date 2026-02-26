@@ -4,3 +4,6 @@ uploads/models/*
 uploads/job-images/*
 uploads/scans/*
 .env
+cloudflared-*.log
+.wrangler
+*.local.log

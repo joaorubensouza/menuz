@@ -1,0 +1,7 @@
+name = "menuz-cloud-0910"
+main = "workers/menuz-proxy.js"
+compatibility_date = "2026-02-25"
+workers_dev = true
+
+[vars]
+ORIGIN_HOST = "menuz.omniaprod.pt"

@@ -32,3 +32,18 @@ AI setup (Meshy):
    - Upload fotos no job (o backend envia ate 4 referencias para Meshy Pro)
    - Click `Rodar IA`
    - Click `Sincronizar` until status reaches `revisao` or `publicado`
+
+Cloudflare (migracao):
+
+1. Faça login do cloudflared (uma vez):
+   - `cloudflared tunnel login`
+2. Rode a migracao automatica:
+   - `powershell -ExecutionPolicy Bypass -File .\scripts\migrar-cloudflare.ps1`
+3. Suba o app e tunnel:
+   - `npm start`
+   - `cloudflared tunnel run menuz-prod`
+
+Arquivos de deploy:
+- `wrangler.toml`
+- `workers/menuz-proxy.js`
+- `scripts/migrar-cloudflare.ps1`
