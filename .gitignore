@@ -7,3 +7,4 @@ uploads/scans/*
 cloudflared-*.log
 .wrangler
 *.local.log
+cloudflare/seed.sql

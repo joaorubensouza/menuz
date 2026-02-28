@@ -1,49 +1,47 @@
 # Menuz AR (prototype)
 
-Run locally:
+## Run local
 
-1. npm install
-2. npm start
-3. Open http://localhost:5170
+1. `npm install`
+2. `npm start`
+3. Open `http://localhost:5170`
 
 Demo logins:
-- Master: admin@menuz.local / admin123
-- Cliente: bistro@menuz.local / cliente123
+- Master: `admin@menuz.local` / `admin123`
+- Cliente: `bistro@menuz.local` / `cliente123`
 
-Use apenas em ambiente local de desenvolvimento.
+## AI setup (Meshy)
 
-Notes:
-- Web AR uses model-viewer. Android uses GLB, iOS needs USDZ.
-- The scanner captures photos and you can create jobs in "Fila 3D" in /admin.
-- AI provider integration (Meshy) is available via backend endpoints.
-
-AI setup (Meshy):
-
-1. Configure API key before starting the server:
-   - PowerShell: `$env:MESHY_API_KEY="sua_chave"`
-   - or copy `.env.example` to `.env` and fill values
-   - or create `.env` in project root:
-     - `MESHY_API_KEY=sua_chave`
-     - `MESHY_AI_MODEL=meshy-6`
-     - `MESHY_MAX_REFERENCE_IMAGES=4`
-2. Start server: `npm start`
+1. Copy `.env.example` to `.env` and configure:
+   - `MESHY_API_KEY=...`
+   - `MESHY_AI_MODEL=meshy-6`
+   - `MESHY_MAX_REFERENCE_IMAGES=4`
+2. Start server with `npm start`
 3. In `/admin` -> restaurant -> `Fila 3D`:
-   - Create a job with provider `Meshy`
-   - Upload fotos no job (o backend envia ate 4 referencias para Meshy Pro)
-   - Click `Rodar IA`
-   - Click `Sincronizar` until status reaches `revisao` or `publicado`
+   - create job with provider `Meshy`
+   - upload photos
+   - `Rodar IA`
+   - `Sincronizar` until `revisao` or `publicado`
 
-Cloudflare (migracao):
+## Cloud-native migration (Worker + D1 + R2)
 
-1. Faça login do cloudflared (uma vez):
-   - `cloudflared tunnel login`
-2. Rode a migracao automatica:
-   - `powershell -ExecutionPolicy Bypass -File .\scripts\migrar-cloudflare.ps1`
-3. Suba o app e tunnel:
-   - `npm start`
-   - `cloudflared tunnel run menuz-prod`
+Prerequisite:
+- Enable R2 in Cloudflare Dashboard (`R2 -> Enable`) for your account.
 
-Arquivos de deploy:
+Run full migration:
+
+1. `powershell -ExecutionPolicy Bypass -File .\scripts\migrar-cloudflare-native.ps1`
+
+This script:
+- applies `cloudflare/schema.sql` to D1
+- imports data from `data/db.json` (via `cloudflare/seed.sql`)
+- uploads local `uploads/` to R2
+- deploys Worker
+
+Main files:
+- `workers/menuz-worker.js`
 - `wrangler.toml`
-- `workers/menuz-proxy.js`
-- `scripts/migrar-cloudflare.ps1`
+- `cloudflare/schema.sql`
+- `scripts/export-db-sql.mjs`
+- `scripts/sync-uploads-r2.ps1`
+- `scripts/migrar-cloudflare-native.ps1`
