@@ -30,9 +30,37 @@ Demo logins:
 - Login lock por IP (`LOGIN_*`)
 - Rate limit para pedido publico (`ORDER_*`)
 - Rate limit para chamadas de IA (`AI_ACTION_*`)
+- Rate limit para tracking publico (`PUBLIC_EVENT_*`)
 - Hardening de headers (CSP, HSTS, frame deny, etc.)
 - Sanitizacao de entrada para restaurante/item/pedido
 - Gate de publicacao de modelo por score QA (`QA_MIN_PUBLISH_SCORE`)
+
+## Analytics de produto (novo)
+
+- Tracking publico:
+  - `menu_view`, `item_view`, `ar_open`, `add_to_cart`, `order_submit`, `qr_scan`
+- Endpoint de coleta:
+  - `POST /api/public/events`
+- Endpoint de analytics por restaurante (autenticado):
+  - `GET /api/restaurants/:id/analytics?days=30`
+- Painel admin:
+  - Secao `Analytics` com funil (menu -> AR -> pedido), receita e top itens.
+  - Alertas de conversao para decidir a proxima acao comercial.
+
+## Automacao da fila 3D
+
+- Endpoint (autenticado):
+  - `POST /api/restaurants/:id/model-jobs/auto-process`
+- Painel admin:
+  - botao `Rodar automacao` em `Fila 3D`
+- Fluxo:
+  - inicia jobs `auto_mode`
+  - sincroniza status IA
+  - avalia QA
+  - publica automaticamente quando passar no gate
+- Execucao automatica no Cloudflare:
+  - cron `*/15 * * * *` no Worker
+  - processa todos os restaurantes com jobs `auto_mode`
 
 ## Cloud-native migration (Worker + D1 + R2)
 

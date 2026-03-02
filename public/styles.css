@@ -409,6 +409,67 @@ textarea {
   flex-wrap: wrap;
 }
 
+.analytics-days {
+  width: 110px;
+  padding: 10px 12px;
+}
+
+.analytics-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.analytics-alerts {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.analytics-alert {
+  border: 1px solid var(--stroke);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+.analytics-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--stroke);
+  padding: 8px 0;
+}
+
+.analytics-line:last-child {
+  border-bottom: 0;
+}
+
+.analytics-card {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.analytics-card .label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+}
+
+.analytics-card .value {
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
 .tag {
   font-size: 0.74rem;
   letter-spacing: 1.6px;

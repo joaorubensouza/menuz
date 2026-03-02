@@ -411,7 +411,16 @@ async function loadMenu(slugValue) {
 
   menuTitle.textContent = restaurant.name;
   menuSubtitle.textContent = `${menuItems.length} itens no cardapio`;
-  trackPublicEvent("menu_view", { restaurantSlug: restaurant.slug || slugValue });
+  trackPublicEvent("menu_view", {
+    restaurantSlug: restaurant.slug || slugValue,
+    table: tableParam || ""
+  });
+  if (tableParam) {
+    trackPublicEvent("qr_scan", {
+      restaurantSlug: restaurant.slug || slugValue,
+      table: tableParam || ""
+    });
+  }
 
   menuList.innerHTML = "";
   menuItems.forEach((item) => {

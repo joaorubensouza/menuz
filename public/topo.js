@@ -21,7 +21,9 @@ const cartButton = document.getElementById("cart-button");
 const cartModal = document.getElementById("cart-modal");
 const cartClose = document.getElementById("cart-close");
 const cartItems = document.getElementById("cart-items");
+const cartTotal = document.getElementById("cart-total");
 const tableInput = document.getElementById("table-input");
+const cartClear = document.getElementById("cart-clear");
 const cartSubmit = document.getElementById("cart-submit");
 const cartMessage = document.getElementById("cart-message");
 
@@ -38,6 +40,28 @@ const state = {
 
 const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart_template";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table_template";
+
+function trackPublicEvent(type, payload = {}) {
+  const body = JSON.stringify({
+    type,
+    restaurantSlug: slug || payload.restaurantSlug || "",
+    itemId: payload.itemId || "",
+    table: payload.table || "",
+    meta: payload.meta || {}
+  });
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon("/api/public/events", blob);
+    return;
+  }
+
+  fetch("/api/public/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  }).catch(() => {});
+}
 
 function formatPrice(value) {
   const n = Number(value);
@@ -121,6 +145,7 @@ function addToCart(itemId) {
   } else {
     state.cart.push({ id: itemId, qty: 1 });
   }
+  trackPublicEvent("add_to_cart", { itemId });
   saveCart();
 }
 
@@ -186,7 +211,7 @@ function buildSection(title, items) {
     row.className = "item-row";
     const thumb = item.image
       ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy" />`
-      : "";
+      : '<span class="thumb-placeholder">Imagem em breve</span>';
 
     const itemArUrl = `/item.html?id=${encodeURIComponent(item.id)}&openAr=1`;
 
@@ -196,16 +221,33 @@ function buildSection(title, items) {
         <p>${escapeHtml(item.description || "")}</p>
         <div class="item-price">R$ ${formatPrice(item.price)}</div>
         <div class="item-links">
-          <a href="${itemArUrl}">Realidade Aumentada</a>
+          <a data-ar-link href="${itemArUrl}">Realidade Aumentada</a>
           <button type="button" data-add>+ pedido</button>
         </div>
       </div>
-      <a class="item-thumb" href="${itemArUrl}" aria-label="Abrir ${escapeHtml(item.name)} em AR">
+      <a class="item-thumb" data-ar-link href="${itemArUrl}" aria-label="Abrir ${escapeHtml(item.name)} em AR">
         ${thumb}
       </a>
     `;
 
     row.querySelector("[data-add]").addEventListener("click", () => addToCart(item.id));
+    const thumbImage = row.querySelector(".item-thumb img");
+    if (thumbImage) {
+      thumbImage.addEventListener("error", () => {
+        const anchor = row.querySelector(".item-thumb");
+        if (!anchor) return;
+        anchor.classList.add("placeholder");
+        anchor.innerHTML = '<span class="thumb-placeholder">Imagem indisponivel</span>';
+      });
+    } else {
+      const anchor = row.querySelector(".item-thumb");
+      if (anchor) anchor.classList.add("placeholder");
+    }
+    row.querySelectorAll("[data-ar-link]").forEach((link) => {
+      link.addEventListener("click", () => {
+        trackPublicEvent("item_view", { itemId: item.id, table: getTableValue() });
+      });
+    });
     grid.appendChild(row);
   });
 
@@ -248,10 +290,18 @@ function renderCart() {
   const detailed = getDetailedCart();
   cartItems.innerHTML = "";
   tableInput.value = getTableValue();
+  if (cartTotal) cartTotal.textContent = "Total: R$ 0,00";
+  if (cartClear) cartClear.disabled = detailed.length === 0;
+  if (cartSubmit) cartSubmit.disabled = detailed.length === 0;
 
   if (detailed.length === 0) {
     cartItems.innerHTML = "<p>Nenhum item no pedido.</p>";
     return;
+  }
+
+  const totalValue = detailed.reduce((acc, item) => acc + item.qty * Number(item.price || 0), 0);
+  if (cartTotal) {
+    cartTotal.textContent = `Total: R$ ${formatPrice(totalValue)}`;
   }
 
   detailed.forEach((item) => {
@@ -304,6 +354,13 @@ function renderHero() {
 
     if (imageUrl) {
       slide.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="Banner ${index + 1}" />`;
+      const img = slide.querySelector("img");
+      if (img) {
+        img.addEventListener("error", () => {
+          slide.innerHTML = "";
+          slide.classList.add("placeholder");
+        });
+      }
     } else {
       slide.classList.add("placeholder");
     }
@@ -369,6 +426,8 @@ async function sendOrder() {
   };
 
   try {
+    cartSubmit.disabled = true;
+    cartSubmit.textContent = "Enviando...";
     const res = await fetch("/api/public/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -381,6 +440,7 @@ async function sendOrder() {
     }
 
     localStorage.setItem(tableKey, tableValue);
+    trackPublicEvent("order_submit", { table: tableValue, meta: { items: state.cart.length } });
     state.cart = [];
     saveCart();
     renderCart();
@@ -390,6 +450,9 @@ async function sendOrder() {
     }, 800);
   } catch (err) {
     cartMessage.textContent = "Erro de conexao ao enviar pedido.";
+  } finally {
+    cartSubmit.textContent = "Enviar pedido";
+    cartSubmit.disabled = state.cart.length === 0;
   }
 }
 
@@ -415,6 +478,16 @@ async function loadRestaurant() {
 
   restaurantName.textContent = state.restaurant.name || "Cardapio";
   restaurantDesc.textContent = state.restaurant.description || "";
+  trackPublicEvent("menu_view", {
+    restaurantSlug: state.restaurant.slug || slug,
+    table: getTableValue()
+  });
+  if (tableFromUrl) {
+    trackPublicEvent("qr_scan", {
+      restaurantSlug: state.restaurant.slug || slug,
+      table: tableFromUrl
+    });
+  }
 
   setTheme();
   renderHero();
@@ -452,6 +525,30 @@ cartButton.addEventListener("click", () => {
 cartClose.addEventListener("click", () => {
   cartModal.classList.add("hidden");
 });
+
+cartModal.addEventListener("click", (event) => {
+  if (event.target === cartModal) {
+    cartModal.classList.add("hidden");
+  }
+});
+
+tableInput.addEventListener("change", () => {
+  const value = (tableInput.value || "").trim();
+  if (!value) {
+    localStorage.removeItem(tableKey);
+    return;
+  }
+  localStorage.setItem(tableKey, value);
+});
+
+if (cartClear) {
+  cartClear.addEventListener("click", () => {
+    state.cart = [];
+    saveCart();
+    renderCart();
+    cartMessage.textContent = "Pedido limpo.";
+  });
+}
 
 cartSubmit.addEventListener("click", sendOrder);
 

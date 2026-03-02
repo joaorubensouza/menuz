@@ -6,6 +6,9 @@ routes = [
   { pattern = "menuz.omniaprod.pt/*", zone_name = "omniaprod.pt" }
 ]
 
+[triggers]
+crons = ["*/15 * * * *"]
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -30,5 +33,7 @@ ORDER_WINDOW_MS = "300000"
 ORDER_MAX_PER_WINDOW = "20"
 AI_ACTION_WINDOW_MS = "60000"
 AI_ACTION_MAX_PER_WINDOW = "12"
+PUBLIC_EVENT_WINDOW_MS = "300000"
+PUBLIC_EVENT_MAX_PER_WINDOW = "200"
 QA_MIN_PUBLISH_SCORE = "70"
 DEBUG_ERRORS = "0"

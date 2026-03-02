@@ -42,6 +42,9 @@ export default {
       }
     }
     return withSecurityHeaders(request, response);
+  },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledAutoProcess(event, env));
   }
 };
 
@@ -467,6 +470,29 @@ function sanitizeEventType(value) {
   return eventType;
 }
 
+function looksLikeFoodItem(item) {
+  const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
+  const foodHints = [
+    "prato",
+    "massa",
+    "penne",
+    "pizza",
+    "burger",
+    "hamb",
+    "sobremesa",
+    "dessert",
+    "bolo",
+    "cheese",
+    "frango",
+    "carne",
+    "peixe",
+    "salada",
+    "food",
+    "menu"
+  ];
+  return foodHints.some((hint) => text.includes(hint));
+}
+
 function toModelQualityBand(score) {
   if (score >= 85) return "excelente";
   if (score >= 70) return "boa";
@@ -488,6 +514,7 @@ async function evaluateJobQuality(env, item, job) {
   const referenceCount = Array.isArray(job.referenceImages) ? job.referenceImages.length : 0;
   const scanCount = Array.isArray(item.scans) ? item.scans.length : 0;
   const totalRefs = referenceCount + scanCount;
+  const isFood = looksLikeFoodItem(item);
 
   if (totalRefs >= 12) {
     score += 20;
@@ -532,6 +559,35 @@ async function evaluateJobQuality(env, item, job) {
     checklist.push("peso_usdz:ok");
   } else if (hasUsdz) {
     checklist.push("peso_usdz:revisar");
+  }
+
+  if (isFood) {
+    if (totalRefs >= 10) {
+      score += 12;
+      checklist.push("food_refs:alto");
+    } else if (totalRefs >= 6) {
+      score += 6;
+      checklist.push("food_refs:minimo");
+    } else {
+      score -= 8;
+      checklist.push("food_refs:baixo");
+    }
+
+    if (glbInfo.exists && usdzInfo.exists) {
+      const ratio = Math.max(glbInfo.size, usdzInfo.size) / Math.max(1, Math.min(glbInfo.size, usdzInfo.size));
+      if (ratio <= 4) {
+        score += 6;
+        checklist.push("food_consistencia_arquivos:ok");
+      } else if (ratio > 8) {
+        score -= 6;
+        checklist.push("food_consistencia_arquivos:revisar");
+      }
+    }
+
+    if ((glbInfo.size > 20 * 1024 * 1024) || (usdzInfo.size > 20 * 1024 * 1024)) {
+      score -= 4;
+      checklist.push("food_tamanho_mobile:alto");
+    }
   }
 
   if ((job.providerStatus || "").toUpperCase() === "SUCCEEDED") {
@@ -767,7 +823,7 @@ async function handleRestaurantRedirect(url, env, slug) {
 
   const restaurant = await getRestaurantBySlug(env, slug);
   if (restaurant && restaurant.template === "topo-do-mundo") {
-    const target = new URL(`/templates/topo-do-mundo.html?${params.toString()}`, url);
+    const target = new URL(`/templates/topo-do-mundo?${params.toString()}`, url);
     return Response.redirect(target.toString(), 302);
   }
   const fallback = new URL(`/?${params.toString()}`, url);
@@ -1038,6 +1094,263 @@ async function downloadModelToR2(env, remoteUrl, extension) {
     httpMetadata: { contentType: extensionToMime(ext) }
   });
   return `/uploads/${key}`;
+}
+
+async function autoProcessRestaurantJobs(env, restaurantId, options = {}) {
+  const config = getConfig(env);
+  const maxJobs = Math.max(1, Math.min(30, toInt(options.maxJobs, 12)));
+  const providerMeshy = getAiProvider(env, "meshy");
+  const summary = {
+    restaurantId,
+    total: 0,
+    started: 0,
+    synced: 0,
+    published: 0,
+    skipped: 0,
+    failed: 0,
+    details: []
+  };
+
+  const { results: rows } = await env.DB.prepare(
+    `SELECT * FROM model_jobs
+     WHERE restaurant_id = ?1 AND auto_mode = 1
+     ORDER BY updated_at DESC
+     LIMIT ?2`
+  )
+    .bind(restaurantId, maxJobs)
+    .all();
+
+  const jobs = (rows || []).map(mapModelJobRow);
+  summary.total = jobs.length;
+
+  for (const job of jobs) {
+    const detail = { jobId: job.id, itemId: job.itemId, action: "skip", status: job.status, reason: "" };
+    const item = await getItemById(env, job.itemId);
+    if (!item) {
+      summary.failed += 1;
+      detail.action = "error";
+      detail.reason = "item_not_found";
+      summary.details.push(detail);
+      continue;
+    }
+
+    try {
+      if (["enviado", "triagem"].includes(job.status) && !job.providerTaskId) {
+        if (!providerMeshy || !providerMeshy.enabled) {
+          summary.skipped += 1;
+          detail.reason = "provider_not_configured";
+          summary.details.push(detail);
+          continue;
+        }
+        const imageInputs = await buildJobImageInputs(env, item, job);
+        if (!imageInputs.length) {
+          job.status = "triagem";
+          job.updatedAt = new Date().toISOString();
+          await env.DB.prepare("UPDATE model_jobs SET status = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(job.status, job.updatedAt, job.id)
+            .run();
+          summary.skipped += 1;
+          detail.reason = "image_source_not_found";
+          detail.status = job.status;
+          summary.details.push(detail);
+          continue;
+        }
+
+        const aiModel = sanitizeText(job.aiModel || config.meshyModel, 60);
+        const startResult = await startMeshyImageTo3D(env, imageInputs, { aiModel });
+        job.provider = "meshy";
+        job.aiModel = aiModel;
+        job.providerTaskId = startResult.taskId;
+        job.providerTaskEndpoint = startResult.endpoint || "";
+        job.providerStatus = "SUBMITTED";
+        job.status = "processando";
+        job.updatedAt = new Date().toISOString();
+
+        await env.DB.prepare(
+          `UPDATE model_jobs
+           SET provider = ?1, ai_model = ?2, provider_task_id = ?3, provider_task_endpoint = ?4,
+               provider_status = ?5, status = ?6, updated_at = ?7
+           WHERE id = ?8`
+        )
+          .bind(
+            job.provider,
+            job.aiModel,
+            job.providerTaskId,
+            job.providerTaskEndpoint,
+            job.providerStatus,
+            job.status,
+            job.updatedAt,
+            job.id
+          )
+          .run();
+        summary.started += 1;
+        detail.action = "started";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      if (job.provider === "meshy" && job.providerTaskId && ["processando", "triagem"].includes(job.status)) {
+        const sync = await fetchMeshyTask(env, job.providerTaskId, job.providerTaskEndpoint || "");
+        const taskData = sync.task || {};
+        const taskStatus = (taskData.status || "").toString();
+        job.providerTaskEndpoint = sync.endpoint || job.providerTaskEndpoint || "";
+        job.providerStatus = taskStatus;
+        job.status = mapMeshyStatus(taskStatus);
+
+        if (job.status === "revisao") {
+          const modelUrls = extractMeshyModelUrls(taskData);
+          if (modelUrls.glb && !job.modelGlb) {
+            job.modelGlb = await downloadModelToR2(env, modelUrls.glb, ".glb");
+          }
+          if (modelUrls.usdz && !job.modelUsdz) {
+            job.modelUsdz = await downloadModelToR2(env, modelUrls.usdz, ".usdz");
+          }
+        }
+
+        if (job.status === "revisao") {
+          const evaluation = await evaluateJobQuality(env, item, job);
+          job.qaScore = evaluation.score;
+          job.qaBand = evaluation.band;
+          job.qaChecklist = evaluation.checklist;
+          const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+          if (evaluation.score >= config.qaMinPublishScore && hasRequiredModels) {
+            job.status = "publicado";
+          }
+        }
+
+        job.updatedAt = new Date().toISOString();
+        await env.DB.prepare(
+          `UPDATE model_jobs
+           SET status = ?1, model_glb = ?2, model_usdz = ?3, provider_task_endpoint = ?4, provider_status = ?5,
+               qa_score = ?6, qa_band = ?7, qa_checklist_json = ?8, updated_at = ?9
+           WHERE id = ?10`
+        )
+          .bind(
+            job.status,
+            job.modelGlb || "",
+            job.modelUsdz || "",
+            job.providerTaskEndpoint || "",
+            job.providerStatus || "",
+            toInt(job.qaScore, 0),
+            (job.qaBand || "fraca").toString(),
+            JSON.stringify(job.qaChecklist || []),
+            job.updatedAt,
+            job.id
+          )
+          .run();
+
+        if (job.status === "publicado") {
+          await env.DB.prepare("UPDATE items SET model_glb = ?1, model_usdz = ?2 WHERE id = ?3")
+            .bind(job.modelGlb || item.modelGlb || "", job.modelUsdz || item.modelUsdz || "", item.id)
+            .run();
+          summary.published += 1;
+        }
+
+        summary.synced += 1;
+        detail.action = "synced";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      if (job.status === "revisao") {
+        const evaluation = await evaluateJobQuality(env, item, job);
+        job.qaScore = evaluation.score;
+        job.qaBand = evaluation.band;
+        job.qaChecklist = evaluation.checklist;
+        const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+        if (evaluation.score >= config.qaMinPublishScore && hasRequiredModels) {
+          job.status = "publicado";
+          summary.published += 1;
+          await env.DB.prepare("UPDATE items SET model_glb = ?1, model_usdz = ?2 WHERE id = ?3")
+            .bind(job.modelGlb || item.modelGlb || "", job.modelUsdz || item.modelUsdz || "", item.id)
+            .run();
+        }
+        job.updatedAt = new Date().toISOString();
+        await env.DB.prepare(
+          "UPDATE model_jobs SET status = ?1, qa_score = ?2, qa_band = ?3, qa_checklist_json = ?4, updated_at = ?5 WHERE id = ?6"
+        )
+          .bind(
+            job.status,
+            toInt(job.qaScore, 0),
+            (job.qaBand || "fraca").toString(),
+            JSON.stringify(job.qaChecklist || []),
+            job.updatedAt,
+            job.id
+          )
+          .run();
+        detail.action = "qa_review";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      summary.skipped += 1;
+      detail.reason = "status_not_eligible";
+      summary.details.push(detail);
+    } catch (error) {
+      summary.failed += 1;
+      detail.action = "error";
+      detail.reason = error?.message || "auto_process_failed";
+      summary.details.push(detail);
+    }
+  }
+
+  return summary;
+}
+
+async function autoProcessAllRestaurants(env, options = {}) {
+  const maxRestaurants = Math.max(1, Math.min(100, toInt(options.maxRestaurants, 40)));
+  const { results } = await env.DB.prepare(
+    "SELECT id FROM restaurants ORDER BY name COLLATE NOCASE LIMIT ?1"
+  )
+    .bind(maxRestaurants)
+    .all();
+
+  const rollup = {
+    restaurants: 0,
+    jobsTotal: 0,
+    started: 0,
+    synced: 0,
+    published: 0,
+    skipped: 0,
+    failed: 0,
+    perRestaurant: []
+  };
+
+  for (const row of results || []) {
+    const summary = await autoProcessRestaurantJobs(env, row.id, options);
+    rollup.restaurants += 1;
+    rollup.jobsTotal += summary.total;
+    rollup.started += summary.started;
+    rollup.synced += summary.synced;
+    rollup.published += summary.published;
+    rollup.skipped += summary.skipped;
+    rollup.failed += summary.failed;
+    rollup.perRestaurant.push(summary);
+  }
+
+  return rollup;
+}
+
+async function runScheduledAutoProcess(event, env) {
+  try {
+    const rollup = await autoProcessAllRestaurants(env, { maxJobs: 10, maxRestaurants: 50 });
+    console.log(
+      JSON.stringify({
+        type: "scheduled_auto_process",
+        cron: event.cron,
+        at: new Date().toISOString(),
+        ...rollup
+      })
+    );
+  } catch (error) {
+    console.error("scheduled_auto_process_failed", error);
+  }
 }
 
 async function handleApi(request, env, url) {
@@ -2247,6 +2560,18 @@ async function handleApi(request, env, url) {
         .run();
       return json({ error: "ai_sync_failed", detail: error.message }, 502);
     }
+  }
+
+  const autoProcessRoute = method === "POST" && matchRoute("/api/restaurants/:id/model-jobs/auto-process", pathname);
+  if (autoProcessRoute) {
+    const restaurant = await getRestaurantById(env, autoProcessRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+    const body = await parseJsonBody(request);
+    const summary = await autoProcessRestaurantJobs(env, restaurant.id, {
+      maxJobs: body.maxJobs
+    });
+    return json({ ok: true, summary });
   }
 
   return json({ error: "not_found" }, 404);

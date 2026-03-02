@@ -135,6 +135,36 @@
 
           <div class="table" id="orders-list"></div>
 
+          <div class="divider"></div>
+
+          <div class="section-title">
+            <h2>Analytics</h2>
+            <div class="row">
+              <label class="muted" for="analytics-days">Janela</label>
+              <select class="input analytics-days" id="analytics-days">
+                <option value="7">7 dias</option>
+                <option value="14">14 dias</option>
+                <option value="30" selected>30 dias</option>
+                <option value="60">60 dias</option>
+                <option value="90">90 dias</option>
+              </select>
+              <button class="btn btn-outline" id="analytics-refresh" type="button">Atualizar</button>
+            </div>
+          </div>
+
+          <div class="analytics-grid" id="analytics-summary"></div>
+          <div class="analytics-alerts" id="analytics-alerts"></div>
+          <div class="form-row" style="margin-top: 12px;">
+            <div class="panel">
+              <div class="tag">Top AR</div>
+              <div class="table" id="analytics-top-ar"></div>
+            </div>
+            <div class="panel">
+              <div class="tag">Top pedidos</div>
+              <div class="table" id="analytics-top-orders"></div>
+            </div>
+          </div>
+
           <div class="panel" style="margin-top: 16px;">
             <div class="tag">Criar ou editar item</div>
             <form class="form-grid" id="item-form">
@@ -181,11 +211,17 @@
 
           <div class="section-title">
             <h2>Fila 3D</h2>
-            <span class="muted" id="model-jobs-count"></span>
+            <div class="row">
+              <span class="muted" id="model-jobs-count"></span>
+              <button class="btn btn-outline" id="model-jobs-auto" type="button">
+                Rodar automacao
+              </button>
+            </div>
           </div>
           <p class="muted" style="margin-bottom: 10px;">
             Publicacao com gate de qualidade: exige GLB + USDZ e score QA minimo.
           </p>
+          <p class="muted" id="model-jobs-auto-msg" style="margin-bottom: 10px;"></p>
 
           <div class="panel">
             <div class="tag">Novo job</div>

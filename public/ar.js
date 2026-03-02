@@ -16,6 +16,29 @@ const itemRestaurant = document.getElementById("item-restaurant");
 
 const slugParam = params.get("r");
 const tableParam = params.get("mesa");
+let arOpenTracked = false;
+
+function trackPublicEvent(type, payload = {}) {
+  const body = JSON.stringify({
+    type,
+    restaurantSlug: payload.restaurantSlug || slugParam || "",
+    itemId: payload.itemId || itemId || "",
+    table: payload.table || tableParam || "",
+    meta: payload.meta || {}
+  });
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon("/api/public/events", blob);
+    return;
+  }
+
+  fetch("/api/public/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  }).catch(() => {});
+}
 
 function applyTheme() {
   const allowed = ["amber", "ocean", "wine"];
@@ -70,6 +93,11 @@ async function loadItem() {
   }
   const data = await res.json();
   const { item, restaurant } = data;
+  trackPublicEvent("item_view", {
+    restaurantSlug: (restaurant && restaurant.slug) || slugParam || "",
+    itemId: item.id,
+    table: tableParam || ""
+  });
 
   document.title = `${item.name} - Menuz AR`;
   itemName.textContent = item.name;
@@ -98,12 +126,29 @@ async function loadItem() {
     arHint.textContent = "Abrindo AR...";
     // Some devices need a short delay after model load before launching AR.
     setTimeout(() => {
+      if (!arOpenTracked) {
+        arOpenTracked = true;
+        trackPublicEvent("ar_open", {
+          restaurantSlug: (restaurant && restaurant.slug) || slugParam || "",
+          itemId: item.id,
+          table: tableParam || "",
+          meta: { mode: "auto" }
+        });
+      }
       tryOpenAr();
     }, 350);
   }
 }
 
 arButton.addEventListener("click", () => {
+  if (!arOpenTracked) {
+    arOpenTracked = true;
+    trackPublicEvent("ar_open", {
+      itemId,
+      table: tableParam || "",
+      meta: { mode: "button" }
+    });
+  }
   tryOpenAr();
 });
 

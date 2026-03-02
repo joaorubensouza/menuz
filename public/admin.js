@@ -46,11 +46,19 @@ const modelJobNotes = document.getElementById("model-job-notes");
 const modelJobMsg = document.getElementById("model-job-msg");
 const modelJobsList = document.getElementById("model-jobs-list");
 const modelJobsCount = document.getElementById("model-jobs-count");
+const modelJobsAuto = document.getElementById("model-jobs-auto");
+const modelJobsAutoMsg = document.getElementById("model-jobs-auto-msg");
 const aiConfigMsg = document.getElementById("ai-config-msg");
 
 const ordersList = document.getElementById("orders-list");
 const ordersCount = document.getElementById("orders-count");
 const ordersRefresh = document.getElementById("orders-refresh");
+const analyticsDays = document.getElementById("analytics-days");
+const analyticsRefresh = document.getElementById("analytics-refresh");
+const analyticsSummary = document.getElementById("analytics-summary");
+const analyticsTopAr = document.getElementById("analytics-top-ar");
+const analyticsTopOrders = document.getElementById("analytics-top-orders");
+const analyticsAlerts = document.getElementById("analytics-alerts");
 
 const scannerInfo = document.getElementById("scanner-info");
 const scannerView = document.getElementById("scanner-view");
@@ -462,8 +470,50 @@ scanStop.addEventListener("click", () => {
 ordersRefresh.addEventListener("click", () => {
   if (state.activeRestaurant) {
     loadOrders(state.activeRestaurant.id);
+    loadAnalytics(state.activeRestaurant.id);
   }
 });
+
+if (analyticsRefresh) {
+  analyticsRefresh.addEventListener("click", () => {
+    if (!state.activeRestaurant) return;
+    loadAnalytics(state.activeRestaurant.id);
+  });
+}
+
+if (analyticsDays) {
+  analyticsDays.addEventListener("change", () => {
+    if (!state.activeRestaurant) return;
+    loadAnalytics(state.activeRestaurant.id);
+  });
+}
+
+if (modelJobsAuto) {
+  modelJobsAuto.addEventListener("click", async () => {
+    if (!state.activeRestaurant) return;
+    modelJobsAuto.disabled = true;
+    if (modelJobsAutoMsg) modelJobsAutoMsg.textContent = "Executando automacao da fila 3D...";
+    try {
+      const data = await api(`/api/restaurants/${state.activeRestaurant.id}/model-jobs/auto-process`, {
+        method: "POST"
+      });
+      const summary = data.summary || {};
+      if (modelJobsAutoMsg) {
+        modelJobsAutoMsg.textContent =
+          `Automacao concluida: iniciados ${summary.started || 0}, ` +
+          `sincronizados ${summary.synced || 0}, publicados ${summary.published || 0}, ` +
+          `falhas ${summary.failed || 0}.`;
+      }
+      await loadItems(state.activeRestaurant.id);
+      await loadModelJobs(state.activeRestaurant.id);
+      await loadAnalytics(state.activeRestaurant.id);
+    } catch (err) {
+      if (modelJobsAutoMsg) modelJobsAutoMsg.textContent = "Falha na automacao da fila 3D.";
+    } finally {
+      modelJobsAuto.disabled = false;
+    }
+  });
+}
 
 function renderRestaurants() {
   restaurantsCount.textContent = `${state.restaurants.length} total`;
@@ -830,6 +880,108 @@ function renderOrderActions(status) {
   `;
 }
 
+function formatCurrency(value) {
+  const amount = Number(value) || 0;
+  return amount.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL"
+  });
+}
+
+function renderAnalyticsRowList(container, rows, valueLabel) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!rows || rows.length === 0) {
+    container.innerHTML = "<div class=\"muted\">Sem dados nesta janela.</div>";
+    return;
+  }
+  rows.forEach((row) => {
+    const el = document.createElement("div");
+    el.className = "analytics-line";
+    el.innerHTML = `
+      <strong>${row.itemName || "Item"}</strong>
+      <span class="muted">${valueLabel}: ${row.opens ?? row.qty ?? 0}</span>
+    `;
+    container.appendChild(el);
+  });
+}
+
+function renderAnalyticsAlerts(summary, conversion) {
+  if (!analyticsAlerts) return;
+  const alerts = [];
+  const menuViews = Number(summary.menuViews || 0);
+  const arOpens = Number(summary.arOpens || 0);
+  const orders = Number(summary.ordersTotal || 0);
+  const menuToAr = Number(conversion.menuToAr || 0);
+  const arToOrder = Number(conversion.arToOrder || 0);
+
+  if (menuViews >= 80 && menuToAr < 10) {
+    alerts.push(
+      "Baixa conversao de menu para AR. Priorize foto melhor no cardapio e destaque do botao de AR nos pratos principais."
+    );
+  }
+  if (arOpens >= 30 && arToOrder < 12) {
+    alerts.push(
+      "Baixa conversao de AR para pedido. Revise escala do modelo, realismo da textura e descricao do prato."
+    );
+  }
+  if (menuViews >= 100 && orders === 0) {
+    alerts.push(
+      "Ha visualizacoes do menu sem pedidos. Verifique fluxo de mesa, botao de pedido e tempo de resposta do atendimento."
+    );
+  }
+  if (alerts.length === 0) {
+    alerts.push("Funil estavel nesta janela. Continue testando novos modelos 3D para aumentar conversao.");
+  }
+
+  analyticsAlerts.innerHTML = "";
+  alerts.forEach((text) => {
+    const row = document.createElement("div");
+    row.className = "analytics-alert";
+    row.textContent = text;
+    analyticsAlerts.appendChild(row);
+  });
+}
+
+function renderAnalytics(data) {
+  if (!analyticsSummary || !analyticsTopAr || !analyticsTopOrders) return;
+  if (!data) {
+    analyticsSummary.innerHTML = "<div class=\"muted\">Sem analytics para exibir.</div>";
+    analyticsTopAr.innerHTML = "<div class=\"muted\">Sem dados.</div>";
+    analyticsTopOrders.innerHTML = "<div class=\"muted\">Sem dados.</div>";
+    if (analyticsAlerts) analyticsAlerts.innerHTML = "";
+    return;
+  }
+
+  const summary = data.summary || {};
+  const conversion = data.conversion || {};
+  const cards = [
+    { label: "Pedidos", value: summary.ordersTotal || 0 },
+    { label: "Receita", value: formatCurrency(summary.revenueTotal || 0) },
+    { label: "Ticket medio", value: formatCurrency(summary.avgTicket || 0) },
+    { label: "Views menu", value: summary.menuViews || 0 },
+    { label: "Aberturas AR", value: summary.arOpens || 0 },
+    { label: "Add no carrinho", value: summary.addToCart || 0 },
+    { label: "Conv. menu -> AR", value: `${Number(conversion.menuToAr || 0).toFixed(1)}%` },
+    { label: "Conv. AR -> pedido", value: `${Number(conversion.arToOrder || 0).toFixed(1)}%` }
+  ];
+
+  analyticsSummary.innerHTML = "";
+  cards.forEach((card) => {
+    const el = document.createElement("article");
+    el.className = "analytics-card";
+    el.innerHTML = `
+      <div class="label">${card.label}</div>
+      <div class="value">${card.value}</div>
+    `;
+    analyticsSummary.appendChild(el);
+  });
+
+  renderAnalyticsRowList(analyticsTopAr, data.topArItems || [], "AR");
+  renderAnalyticsRowList(analyticsTopOrders, data.topOrderedItems || [], "Qtd");
+  renderAnalyticsAlerts(summary, conversion);
+}
+
 function loadItemIntoForm(item) {
   document.getElementById("item-id").value = item.id;
   document.getElementById("item-name").value = item.name || "";
@@ -882,6 +1034,7 @@ async function selectRestaurant(id) {
   restaurantsPanel.classList.add("hidden");
   manageTitle.textContent = `Gerenciar ${restaurant.name}`;
   fillRestaurantForm(restaurant);
+  if (modelJobsAutoMsg) modelJobsAutoMsg.textContent = "";
   if (state.user.role === "master") {
     clientUserPanel.classList.remove("hidden");
   } else {
@@ -890,6 +1043,7 @@ async function selectRestaurant(id) {
   await loadItems(id);
   await loadOrders(id);
   await loadModelJobs(id);
+  await loadAnalytics(id);
   if (lizzWidget) lizzWidget.classList.remove("hidden");
 }
 
@@ -982,10 +1136,22 @@ function getLizzResponse(message) {
       reply: "Acompanhe em 'Pedidos'. Use os botoes para aceitar, entregar ou cancelar."
     };
   }
+  if (text.includes("analytics") || text.includes("metrica") || text.includes("conversao")) {
+    return {
+      reply:
+        "Abra a secao Analytics para ver funil menu->AR->pedido, receita e top itens. Ajuste a janela em dias para comparar performance."
+    };
+  }
   if (text.includes("delet") || text.includes("excluir")) {
     return {
       reply:
         "Use o botao 'Excluir' no item ou no job da fila. O sistema remove os dados relacionados automaticamente."
+    };
+  }
+  if (text.includes("automacao") || text.includes("auto processar") || text.includes("rodar fila")) {
+    return {
+      reply:
+        "Use o botao 'Rodar automacao' na Fila 3D. Ele inicia jobs automaticos, sincroniza IA e publica quando passar no QA."
     };
   }
   return {
@@ -1078,6 +1244,19 @@ async function loadOrders(restaurantId) {
   }
 }
 
+async function loadAnalytics(restaurantId) {
+  if (!analyticsSummary || !analyticsTopAr || !analyticsTopOrders) return;
+  const days = Number((analyticsDays && analyticsDays.value) || 30) || 30;
+  try {
+    const data = await api(`/api/restaurants/${restaurantId}/analytics?days=${days}`);
+    renderAnalytics(data.analytics || null);
+  } catch (err) {
+    analyticsSummary.innerHTML = "<div class=\"muted\">Erro ao carregar analytics.</div>";
+    analyticsTopAr.innerHTML = "<div class=\"muted\">Erro ao carregar dados.</div>";
+    analyticsTopOrders.innerHTML = "<div class=\"muted\">Erro ao carregar dados.</div>";
+  }
+}
+
 async function loadRestaurants() {
   const data = await api("/api/restaurants");
   state.restaurants = data.restaurants || [];
@@ -1115,6 +1294,7 @@ async function updateOrderStatus(orderId, status) {
       body: JSON.stringify({ status })
     });
     await loadOrders(state.activeRestaurant.id);
+    await loadAnalytics(state.activeRestaurant.id);
   } catch (err) {
     // ignore
   }
