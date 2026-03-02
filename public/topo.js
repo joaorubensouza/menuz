@@ -1,10 +1,22 @@
 const params = new URLSearchParams(window.location.search);
 const slug = (params.get("r") || "").trim();
 const tableFromUrl = (params.get("mesa") || "").trim();
+const languageKey = slug ? `menuz_lang_${slug}` : "menuz_lang_template";
 
 const searchToggle = document.getElementById("search-toggle");
 const searchWrap = document.getElementById("search-wrap");
 const searchInput = document.getElementById("search-input");
+const menuToggle = document.getElementById("menu-toggle");
+const sideOverlay = document.getElementById("side-overlay");
+const sideDrawer = document.getElementById("side-drawer");
+const drawerClose = document.getElementById("drawer-close");
+const drawerLang = document.getElementById("drawer-lang");
+const drawerInfo = document.getElementById("drawer-info");
+
+const langModal = document.getElementById("lang-modal");
+const langClose = document.getElementById("lang-close");
+const langTitle = document.getElementById("lang-title");
+const langList = document.getElementById("lang-list");
 
 const heroTrack = document.getElementById("hero-track");
 const heroDots = document.getElementById("hero-dots");
@@ -13,6 +25,9 @@ const heroNext = document.getElementById("hero-next");
 
 const restaurantName = document.getElementById("restaurant-name");
 const restaurantDesc = document.getElementById("restaurant-desc");
+const languageToggle = document.getElementById("language-toggle");
+const shareToggle = document.getElementById("share-toggle");
+const modeStrip = document.getElementById("mode-strip");
 const categoryList = document.getElementById("category-list");
 const menuList = document.getElementById("menu-list");
 const emptyState = document.getElementById("empty-state");
@@ -27,16 +42,249 @@ const cartClear = document.getElementById("cart-clear");
 const cartSubmit = document.getElementById("cart-submit");
 const cartMessage = document.getElementById("cart-message");
 
+const LANGUAGES = [
+  { code: "pt-BR", flag: "🇧🇷", label: "Português do Brasil", subtitle: "Padrao do restaurante" },
+  { code: "en-US", flag: "🇺🇸", label: "American English", subtitle: "For foreigners" },
+  { code: "es-ES", flag: "🇪🇸", label: "Español", subtitle: "Para extranjeros" },
+  { code: "fr-FR", flag: "🇫🇷", label: "Français", subtitle: "Pour les étrangers" },
+  { code: "it-IT", flag: "🇮🇹", label: "Italiano", subtitle: "Per gli stranieri" },
+  { code: "de-DE", flag: "🇩🇪", label: "Deutsch", subtitle: "Für Ausländer" }
+];
+
+const MESSAGES = {
+  "pt-BR": {
+    searchPlaceholder: "Buscar no cardapio",
+    modeMenu: "Menu",
+    menuPersonality: "Menu Personnalite",
+    all: "All",
+    ar: "Realidade Aumentada",
+    add: "+ pedido",
+    noItemsFound: "Nenhum item encontrado para este filtro.",
+    orderFab: (count, total) => `Pedido (${count}) | R$ ${total}`,
+    orderOfTable: "Pedido da mesa",
+    orderSummary: "Resumo do pedido",
+    close: "Fechar",
+    noItemsInCart: "Nenhum item no pedido.",
+    total: "Total",
+    tablePlaceholder: "Mesa (ex: 12)",
+    clear: "Limpar",
+    submit: "Enviar pedido",
+    sending: "Enviando...",
+    msgNeedTable: "Informe a mesa antes de enviar.",
+    msgEmpty: "Seu pedido esta vazio.",
+    msgFail: "Nao foi possivel enviar o pedido.",
+    msgOk: "Pedido enviado com sucesso.",
+    msgConnection: "Erro de conexao ao enviar pedido.",
+    msgCleared: "Pedido limpo.",
+    language: "Idioma"
+  },
+  "en-US": {
+    searchPlaceholder: "Search menu",
+    modeMenu: "Menu",
+    menuPersonality: "Signature Menu",
+    all: "All",
+    ar: "Augmented Reality",
+    add: "+ order",
+    noItemsFound: "No items found for this filter.",
+    orderFab: (count, total) => `Order (${count}) | R$ ${total}`,
+    orderOfTable: "Table order",
+    orderSummary: "Order summary",
+    close: "Close",
+    noItemsInCart: "No items in this order.",
+    total: "Total",
+    tablePlaceholder: "Table (ex: 12)",
+    clear: "Clear",
+    submit: "Send order",
+    sending: "Sending...",
+    msgNeedTable: "Enter table before sending.",
+    msgEmpty: "Your order is empty.",
+    msgFail: "Could not send order.",
+    msgOk: "Order sent successfully.",
+    msgConnection: "Connection error while sending order.",
+    msgCleared: "Order cleared.",
+    language: "Language"
+  },
+  "es-ES": {
+    searchPlaceholder: "Buscar en el menu",
+    modeMenu: "Menu",
+    menuPersonality: "Menu Signature",
+    all: "Todo",
+    ar: "Realidad Aumentada",
+    add: "+ pedido",
+    noItemsFound: "No se encontraron items para este filtro.",
+    orderFab: (count, total) => `Pedido (${count}) | R$ ${total}`,
+    orderOfTable: "Pedido de mesa",
+    orderSummary: "Resumen del pedido",
+    close: "Cerrar",
+    noItemsInCart: "No hay items en el pedido.",
+    total: "Total",
+    tablePlaceholder: "Mesa (ej: 12)",
+    clear: "Limpiar",
+    submit: "Enviar pedido",
+    sending: "Enviando...",
+    msgNeedTable: "Informe la mesa antes de enviar.",
+    msgEmpty: "Tu pedido esta vacio.",
+    msgFail: "No se pudo enviar el pedido.",
+    msgOk: "Pedido enviado correctamente.",
+    msgConnection: "Error de conexion al enviar.",
+    msgCleared: "Pedido limpiado.",
+    language: "Idioma"
+  },
+  "fr-FR": {
+    searchPlaceholder: "Rechercher dans le menu",
+    modeMenu: "Menu",
+    menuPersonality: "Menu Signature",
+    all: "Tous",
+    ar: "Réalité augmentée",
+    add: "+ commande",
+    noItemsFound: "Aucun article pour ce filtre.",
+    orderFab: (count, total) => `Commande (${count}) | R$ ${total}`,
+    orderOfTable: "Commande de table",
+    orderSummary: "Résumé de commande",
+    close: "Fermer",
+    noItemsInCart: "Aucun article dans la commande.",
+    total: "Total",
+    tablePlaceholder: "Table (ex: 12)",
+    clear: "Vider",
+    submit: "Envoyer la commande",
+    sending: "Envoi...",
+    msgNeedTable: "Informez la table avant envoi.",
+    msgEmpty: "Votre commande est vide.",
+    msgFail: "Impossible d'envoyer la commande.",
+    msgOk: "Commande envoyée avec succès.",
+    msgConnection: "Erreur de connexion lors de l'envoi.",
+    msgCleared: "Commande vidée.",
+    language: "Langue"
+  },
+  "it-IT": {
+    searchPlaceholder: "Cerca nel menu",
+    modeMenu: "Menu",
+    menuPersonality: "Menu Signature",
+    all: "Tutti",
+    ar: "Realtà aumentata",
+    add: "+ ordine",
+    noItemsFound: "Nessun elemento trovato per questo filtro.",
+    orderFab: (count, total) => `Ordine (${count}) | R$ ${total}`,
+    orderOfTable: "Ordine del tavolo",
+    orderSummary: "Riepilogo ordine",
+    close: "Chiudi",
+    noItemsInCart: "Nessun articolo nell'ordine.",
+    total: "Totale",
+    tablePlaceholder: "Tavolo (es: 12)",
+    clear: "Pulisci",
+    submit: "Invia ordine",
+    sending: "Invio...",
+    msgNeedTable: "Inserisci il tavolo prima di inviare.",
+    msgEmpty: "Il tuo ordine è vuoto.",
+    msgFail: "Impossibile inviare l'ordine.",
+    msgOk: "Ordine inviato con successo.",
+    msgConnection: "Errore di connessione durante l'invio.",
+    msgCleared: "Ordine pulito.",
+    language: "Lingua"
+  },
+  "de-DE": {
+    searchPlaceholder: "Menü durchsuchen",
+    modeMenu: "Menü",
+    menuPersonality: "Signature Menü",
+    all: "Alle",
+    ar: "Augmented Reality",
+    add: "+ bestellen",
+    noItemsFound: "Keine Artikel für diesen Filter gefunden.",
+    orderFab: (count, total) => `Bestellung (${count}) | R$ ${total}`,
+    orderOfTable: "Tischbestellung",
+    orderSummary: "Bestellübersicht",
+    close: "Schließen",
+    noItemsInCart: "Keine Artikel in der Bestellung.",
+    total: "Gesamt",
+    tablePlaceholder: "Tisch (z.B. 12)",
+    clear: "Leeren",
+    submit: "Bestellung senden",
+    sending: "Wird gesendet...",
+    msgNeedTable: "Tischnummer vor dem Senden angeben.",
+    msgEmpty: "Deine Bestellung ist leer.",
+    msgFail: "Bestellung konnte nicht gesendet werden.",
+    msgOk: "Bestellung erfolgreich gesendet.",
+    msgConnection: "Verbindungsfehler beim Senden.",
+    msgCleared: "Bestellung geleert.",
+    language: "Sprache"
+  }
+};
+
+const CATEGORY_TRANSLATIONS = {
+  "pratos-principais": {
+    "pt-BR": "Pratos Principais",
+    "en-US": "Main Courses",
+    "es-ES": "Platos Principales",
+    "fr-FR": "Plats Principaux",
+    "it-IT": "Piatti Principali",
+    "de-DE": "Hauptgerichte"
+  },
+  sobremesas: {
+    "pt-BR": "Sobremesas",
+    "en-US": "Desserts",
+    "es-ES": "Postres",
+    "fr-FR": "Desserts",
+    "it-IT": "Dolci",
+    "de-DE": "Desserts"
+  },
+  entries: {
+    "pt-BR": "Entradas",
+    "en-US": "Entries",
+    "es-ES": "Entradas",
+    "fr-FR": "Entrées",
+    "it-IT": "Antipasti",
+    "de-DE": "Vorspeisen"
+  },
+  salads: {
+    "pt-BR": "Saladas",
+    "en-US": "Salads",
+    "es-ES": "Ensaladas",
+    "fr-FR": "Salades",
+    "it-IT": "Insalate",
+    "de-DE": "Salate"
+  },
+  meat: {
+    "pt-BR": "Carnes",
+    "en-US": "Meat",
+    "es-ES": "Carnes",
+    "fr-FR": "Viandes",
+    "it-IT": "Carni",
+    "de-DE": "Fleisch"
+  },
+  fish: {
+    "pt-BR": "Peixes",
+    "en-US": "Fish",
+    "es-ES": "Pescados",
+    "fr-FR": "Poissons",
+    "it-IT": "Pesce",
+    "de-DE": "Fisch"
+  },
+  accompaniments: {
+    "pt-BR": "Acompanhamentos",
+    "en-US": "Accompaniments",
+    "es-ES": "Acompañamientos",
+    "fr-FR": "Accompagnements",
+    "it-IT": "Contorni",
+    "de-DE": "Beilagen"
+  }
+};
+
 const state = {
   restaurant: null,
   items: [],
   cart: [],
   selectedCategory: "all",
   categories: [],
+  modeItems: [],
   heroImages: [],
   heroIndex: 0,
-  heroTimer: null
+  heroTimer: null,
+  language: localStorage.getItem(languageKey) || "pt-BR"
 };
+
+if (!LANGUAGES.some((lang) => lang.code === state.language)) {
+  state.language = "pt-BR";
+}
 
 const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart_template";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table_template";
@@ -78,6 +326,71 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function normalizeTextKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function currentMessages() {
+  return MESSAGES[state.language] || MESSAGES["pt-BR"];
+}
+
+function t(key) {
+  return currentMessages()[key] || MESSAGES["pt-BR"][key] || key;
+}
+
+function getLanguageConfig(code = state.language) {
+  return LANGUAGES.find((lang) => lang.code === code) || LANGUAGES[0];
+}
+
+function translateCategory(rawCategory) {
+  const dict = CATEGORY_TRANSLATIONS[normalizeTextKey(rawCategory)];
+  if (!dict) return rawCategory;
+  return dict[state.language] || dict["pt-BR"] || rawCategory;
+}
+
+function getRestaurantContact() {
+  const contact = (state.restaurant && state.restaurant.contact) || {};
+  if (Object.keys(contact).length > 0) return contact;
+
+  if ((state.restaurant && state.restaurant.slug) === "topo-do-mundo-mg") {
+    return {
+      address: "Rua Senador Milton Campos, 145, Vila da Serra, Nova Lima - MG, Brasil",
+      phone: "(31) 99711-0124",
+      email: "topodomundo@topodomundo.com",
+      website: "www.topodomundo.com"
+    };
+  }
+  return {
+    address: "Endereco nao informado",
+    phone: "-",
+    email: "-",
+    website: "-"
+  };
+}
+
+function applyLanguageTexts() {
+  searchInput.placeholder = t("searchPlaceholder");
+  emptyState.textContent = t("noItemsFound");
+  langTitle.textContent = t("language");
+  cartClose.textContent = t("close");
+  drawerClose.textContent = t("close");
+  const brandLabel = document.querySelector(".cart-head .brand.small");
+  if (brandLabel) brandLabel.textContent = t("orderOfTable");
+  const summaryLabel = document.querySelector(".cart-head h2");
+  if (summaryLabel) summaryLabel.textContent = t("orderSummary");
+  if (cartClear) cartClear.textContent = t("clear");
+  if (cartSubmit) {
+    const isSending = cartSubmit.dataset.sending === "1";
+    cartSubmit.textContent = isSending ? t("sending") : t("submit");
+  }
+  tableInput.placeholder = t("tablePlaceholder");
+}
+
 function inferCategory(item) {
   const raw = (item.category || item.section || "").toString().trim();
   return raw || "Menu";
@@ -90,6 +403,77 @@ function setTheme() {
       ? state.restaurant.theme.accent
       : "#e48a14";
   document.documentElement.style.setProperty("--accent", accent);
+}
+
+function renderDrawer() {
+  const lang = getLanguageConfig();
+  drawerLang.textContent = `${lang.flag} ${lang.label}`;
+
+  const contact = getRestaurantContact();
+  drawerInfo.innerHTML = `
+    <li><span>📍</span><span>${escapeHtml(contact.address || "-")}</span></li>
+    <li><span>📞</span><span>${escapeHtml(contact.phone || "-")}</span></li>
+    <li><span>✉️</span><span>${escapeHtml(contact.email || "-")}</span></li>
+    <li><span>🌐</span><span>${escapeHtml(contact.website || "-")}</span></li>
+  `;
+}
+
+function openDrawer() {
+  sideOverlay.classList.remove("hidden");
+  sideDrawer.classList.add("open");
+  sideDrawer.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDrawer() {
+  sideOverlay.classList.add("hidden");
+  sideDrawer.classList.remove("open");
+  sideDrawer.setAttribute("aria-hidden", "true");
+  if (langModal.classList.contains("hidden")) {
+    document.body.style.overflow = "";
+  }
+}
+
+function renderLanguageList() {
+  langList.innerHTML = "";
+  LANGUAGES.forEach((lang) => {
+    const isActive = lang.code === state.language;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `lang-option ${isActive ? "active" : ""}`;
+    button.innerHTML = `
+      <div class="lang-copy">
+        <strong>${lang.flag} ${escapeHtml(lang.label)}</strong>
+        <span>${escapeHtml(lang.subtitle)}</span>
+      </div>
+      <span class="lang-check"></span>
+    `;
+    button.addEventListener("click", () => {
+      state.language = lang.code;
+      localStorage.setItem(languageKey, state.language);
+      applyLanguageTexts();
+      renderLanguageList();
+      renderDrawer();
+      renderModeStrip();
+      renderTabs();
+      renderMenu();
+      renderCart();
+    });
+    langList.appendChild(button);
+  });
+}
+
+function openLanguageModal() {
+  renderLanguageList();
+  langModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeLanguageModal() {
+  langModal.classList.add("hidden");
+  if (sideOverlay.classList.contains("hidden")) {
+    document.body.style.overflow = "";
+  }
 }
 
 function getTableValue() {
@@ -134,7 +518,7 @@ function updateCartButton() {
 
   const totalItems = detailed.reduce((acc, item) => acc + item.qty, 0);
   const totalPrice = detailed.reduce((acc, item) => acc + item.qty * Number(item.price || 0), 0);
-  cartButton.textContent = `Pedido (${totalItems}) | R$ ${formatPrice(totalPrice)}`;
+  cartButton.textContent = t("orderFab")(totalItems, formatPrice(totalPrice));
   cartButton.classList.remove("hidden");
 }
 
@@ -176,6 +560,42 @@ function getFilteredItems() {
   });
 }
 
+function getCategoryCover(category) {
+  const found = state.items.find(
+    (item) => inferCategory(item).toLowerCase() === category.toLowerCase() && item.image
+  );
+  return found ? found.image : "";
+}
+
+function renderModeStrip() {
+  modeStrip.innerHTML = "";
+  const chips = ["all", ...state.categories];
+
+  chips.forEach((chip) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `mode-chip ${state.selectedCategory === chip ? "active" : ""}`;
+    if (chip === "all") {
+      button.innerHTML = `<span class="chip-label">${escapeHtml(t("modeMenu"))}</span>`;
+    } else {
+      const image = getCategoryCover(chip);
+      const label = translateCategory(chip);
+      if (image) {
+        button.classList.add("with-image");
+        button.style.backgroundImage = `url('${encodeURI(image)}')`;
+      }
+      button.innerHTML = `<span class="chip-label">${escapeHtml(label)}</span>`;
+    }
+    button.addEventListener("click", () => {
+      state.selectedCategory = chip;
+      renderModeStrip();
+      renderTabs();
+      renderMenu();
+    });
+    modeStrip.appendChild(button);
+  });
+}
+
 function renderTabs() {
   categoryList.innerHTML = "";
   const tabs = ["all", ...state.categories];
@@ -184,9 +604,10 @@ function renderTabs() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `tab-btn ${state.selectedCategory === tab ? "active" : ""}`;
-    button.textContent = tab === "all" ? "All" : tab;
+    button.textContent = tab === "all" ? t("all") : translateCategory(tab);
     button.addEventListener("click", () => {
       state.selectedCategory = tab;
+      renderModeStrip();
       renderTabs();
       renderMenu();
     });
@@ -200,7 +621,7 @@ function buildSection(title, items) {
 
   const heading = document.createElement("h2");
   heading.className = "section-title";
-  heading.textContent = title;
+  heading.textContent = translateCategory(title);
   wrapper.appendChild(heading);
 
   const grid = document.createElement("div");
@@ -221,8 +642,8 @@ function buildSection(title, items) {
         <p>${escapeHtml(item.description || "")}</p>
         <div class="item-price">R$ ${formatPrice(item.price)}</div>
         <div class="item-links">
-          <a data-ar-link href="${itemArUrl}">Realidade Aumentada</a>
-          <button type="button" data-add>+ pedido</button>
+          <a data-ar-link href="${itemArUrl}">${escapeHtml(t("ar"))}</a>
+          <button type="button" data-add>${escapeHtml(t("add"))}</button>
         </div>
       </div>
       <a class="item-thumb" data-ar-link href="${itemArUrl}" aria-label="Abrir ${escapeHtml(item.name)} em AR">
@@ -290,18 +711,18 @@ function renderCart() {
   const detailed = getDetailedCart();
   cartItems.innerHTML = "";
   tableInput.value = getTableValue();
-  if (cartTotal) cartTotal.textContent = "Total: R$ 0,00";
+  if (cartTotal) cartTotal.textContent = `${t("total")}: R$ 0,00`;
   if (cartClear) cartClear.disabled = detailed.length === 0;
   if (cartSubmit) cartSubmit.disabled = detailed.length === 0;
 
   if (detailed.length === 0) {
-    cartItems.innerHTML = "<p>Nenhum item no pedido.</p>";
+    cartItems.innerHTML = `<p>${escapeHtml(t("noItemsInCart"))}</p>`;
     return;
   }
 
   const totalValue = detailed.reduce((acc, item) => acc + item.qty * Number(item.price || 0), 0);
   if (cartTotal) {
-    cartTotal.textContent = `Total: R$ ${formatPrice(totalValue)}`;
+    cartTotal.textContent = `${t("total")}: R$ ${formatPrice(totalValue)}`;
   }
 
   detailed.forEach((item) => {
@@ -411,11 +832,11 @@ async function sendOrder() {
   cartMessage.textContent = "";
   const tableValue = (tableInput.value || "").trim();
   if (!tableValue) {
-    cartMessage.textContent = "Informe a mesa antes de enviar.";
+    cartMessage.textContent = t("msgNeedTable");
     return;
   }
   if (state.cart.length === 0) {
-    cartMessage.textContent = "Seu pedido esta vazio.";
+    cartMessage.textContent = t("msgEmpty");
     return;
   }
 
@@ -427,7 +848,8 @@ async function sendOrder() {
 
   try {
     cartSubmit.disabled = true;
-    cartSubmit.textContent = "Enviando...";
+    cartSubmit.dataset.sending = "1";
+    cartSubmit.textContent = t("sending");
     const res = await fetch("/api/public/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -435,7 +857,7 @@ async function sendOrder() {
     });
 
     if (!res.ok) {
-      cartMessage.textContent = "Nao foi possivel enviar o pedido.";
+      cartMessage.textContent = t("msgFail");
       return;
     }
 
@@ -444,14 +866,15 @@ async function sendOrder() {
     state.cart = [];
     saveCart();
     renderCart();
-    cartMessage.textContent = "Pedido enviado com sucesso.";
+    cartMessage.textContent = t("msgOk");
     setTimeout(() => {
       cartModal.classList.add("hidden");
     }, 800);
   } catch (err) {
-    cartMessage.textContent = "Erro de conexao ao enviar pedido.";
+    cartMessage.textContent = t("msgConnection");
   } finally {
-    cartSubmit.textContent = "Enviar pedido";
+    cartSubmit.dataset.sending = "0";
+    cartSubmit.textContent = t("submit");
     cartSubmit.disabled = state.cart.length === 0;
   }
 }
@@ -490,8 +913,11 @@ async function loadRestaurant() {
   }
 
   setTheme();
+  applyLanguageTexts();
+  renderDrawer();
   renderHero();
   startHeroAutoplay();
+  renderModeStrip();
   renderTabs();
   renderMenu();
 
@@ -508,6 +934,42 @@ searchToggle.addEventListener("click", () => {
 });
 
 searchInput.addEventListener("input", () => renderMenu());
+
+menuToggle.addEventListener("click", () => {
+  renderDrawer();
+  closeLanguageModal();
+  openDrawer();
+});
+
+drawerClose.addEventListener("click", closeDrawer);
+sideOverlay.addEventListener("click", closeDrawer);
+
+languageToggle.addEventListener("click", () => {
+  closeDrawer();
+  openLanguageModal();
+});
+
+langClose.addEventListener("click", closeLanguageModal);
+langModal.addEventListener("click", (event) => {
+  if (event.target === langModal) closeLanguageModal();
+});
+
+shareToggle.addEventListener("click", async () => {
+  const shareUrl = window.location.href;
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: state.restaurant ? state.restaurant.name : "Cardapio",
+        url: shareUrl
+      });
+      return;
+    }
+    await navigator.clipboard.writeText(shareUrl);
+    alert("Link copiado.");
+  } catch (err) {
+    // no-op
+  }
+});
 
 heroPrev.addEventListener("click", () => {
   setHeroSlide(state.heroIndex - 1);
@@ -546,7 +1008,7 @@ if (cartClear) {
     state.cart = [];
     saveCart();
     renderCart();
-    cartMessage.textContent = "Pedido limpo.";
+    cartMessage.textContent = t("msgCleared");
   });
 }
 

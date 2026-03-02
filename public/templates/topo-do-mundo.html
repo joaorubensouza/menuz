@@ -8,7 +8,11 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="topbar-spacer" aria-hidden="true"></div>
+      <button class="icon-btn" id="menu-toggle" type="button" aria-label="Abrir menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
       <div class="logo-wrap">
         <p class="logo-title">TOPO DO MUNDO</p>
         <p class="logo-sub">restaurante</p>
@@ -37,20 +41,15 @@
       <div class="title-row">
         <h1 id="restaurant-name">Carregando...</h1>
         <div class="title-tools">
-          <button class="icon-text" type="button">Aa</button>
-          <button class="icon-text" type="button">&#8901;</button>
+          <button class="icon-text" id="language-toggle" type="button">Aa</button>
+          <button class="icon-text" id="share-toggle" type="button">&#8901;</button>
         </div>
       </div>
       <p id="restaurant-desc"></p>
     </section>
 
     <main class="page">
-      <section class="mode-strip">
-        <button class="mode-chip active" type="button">Menu</button>
-        <button class="mode-chip" type="button">Fondue</button>
-        <button class="mode-chip" type="button">Desserts</button>
-        <button class="mode-chip dark" type="button">Menu Personnalite</button>
-      </section>
+      <section class="mode-strip" id="mode-strip"></section>
 
       <section class="tabs" id="category-list"></section>
 
@@ -85,6 +84,29 @@
         </div>
       </div>
     </div>
+
+    <div class="lang-modal hidden" id="lang-modal">
+      <div class="lang-card">
+        <div class="lang-head">
+          <h3 id="lang-title">Idioma</h3>
+          <button class="close-btn" id="lang-close" type="button">Fechar</button>
+        </div>
+        <div id="lang-list"></div>
+      </div>
+    </div>
+
+    <div class="side-overlay hidden" id="side-overlay"></div>
+    <aside class="side-drawer" id="side-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <span class="drawer-lang" id="drawer-lang">Português do Brasil</span>
+        <button class="close-btn" id="drawer-close" type="button">Fechar</button>
+      </div>
+      <div class="drawer-brand">
+        <p class="logo-title">TOPO DO MUNDO</p>
+        <p class="logo-sub">restaurante</p>
+      </div>
+      <ul class="drawer-info" id="drawer-info"></ul>
+    </aside>
 
     <script src="/topo.js"></script>
   </body>
