@@ -281,6 +281,8 @@ const state = {
   heroTimer: null,
   language: localStorage.getItem(languageKey) || "pt-BR"
 };
+const HERO_FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1600&q=80";
 
 if (!LANGUAGES.some((lang) => lang.code === state.language)) {
   state.language = "pt-BR";
@@ -345,6 +347,25 @@ function t(key) {
 
 function getLanguageConfig(code = state.language) {
   return LANGUAGES.find((lang) => lang.code === code) || LANGUAGES[0];
+}
+
+function getEnabledLanguages() {
+  const settings = (state.restaurant && state.restaurant.languageSettings) || {};
+  const configured = Array.isArray(settings.languages)
+    ? settings.languages
+    : [];
+  const filtered = LANGUAGES.filter((lang) => configured.includes(lang.code));
+  return filtered.length > 0 ? filtered : LANGUAGES;
+}
+
+function getDefaultLanguageCode() {
+  const settings = (state.restaurant && state.restaurant.languageSettings) || {};
+  const candidate = settings.defaultLanguage;
+  const enabled = getEnabledLanguages();
+  if (enabled.some((lang) => lang.code === candidate)) {
+    return candidate;
+  }
+  return enabled[0].code;
 }
 
 function translateCategory(rawCategory) {
@@ -436,7 +457,7 @@ function closeDrawer() {
 
 function renderLanguageList() {
   langList.innerHTML = "";
-  LANGUAGES.forEach((lang) => {
+  getEnabledLanguages().forEach((lang) => {
     const isActive = lang.code === state.language;
     const button = document.createElement("button");
     button.type = "button";
@@ -757,7 +778,9 @@ function buildHeroImages() {
       images.push(item.image);
     }
   });
-  return images.slice(0, 8);
+  const unique = images.slice(0, 8);
+  if (unique.length > 0) return unique;
+  return [HERO_FALLBACK_IMAGE];
 }
 
 function renderHero() {
@@ -898,6 +921,16 @@ async function loadRestaurant() {
   state.items = Array.isArray(data.items) ? data.items : [];
   state.categories = [...new Set(state.items.map((item) => inferCategory(item)))];
   state.heroIndex = 0;
+
+  const storedLanguage = localStorage.getItem(languageKey) || "";
+  const enabledLanguages = getEnabledLanguages();
+  const defaultLanguageCode = getDefaultLanguageCode();
+  if (enabledLanguages.some((lang) => lang.code === storedLanguage)) {
+    state.language = storedLanguage;
+  } else {
+    state.language = defaultLanguageCode;
+    localStorage.setItem(languageKey, state.language);
+  }
 
   restaurantName.textContent = state.restaurant.name || "Cardapio";
   restaurantDesc.textContent = state.restaurant.description || "";

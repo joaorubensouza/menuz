@@ -18,6 +18,8 @@ const JSON_HEADERS = {
   "cache-control": "no-store"
 };
 const DEFAULT_ACCENT = "#D95F2B";
+const DEFAULT_LANGUAGE_CODE = "pt-BR";
+const DEFAULT_LANGUAGE_OPTIONS = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
 const encoder = new TextEncoder();
 let schemaInitPromise = null;
 
@@ -116,7 +118,13 @@ async function ensureRuntimeSchema(env) {
       "ALTER TABLE model_jobs ADD COLUMN qa_score INTEGER DEFAULT 0",
       "ALTER TABLE model_jobs ADD COLUMN qa_band TEXT DEFAULT 'fraca'",
       "ALTER TABLE model_jobs ADD COLUMN qa_checklist_json TEXT DEFAULT '[]'",
-      "ALTER TABLE model_jobs ADD COLUMN qa_notes TEXT DEFAULT ''"
+      "ALTER TABLE model_jobs ADD COLUMN qa_notes TEXT DEFAULT ''",
+      "ALTER TABLE restaurants ADD COLUMN contact_address TEXT DEFAULT ''",
+      "ALTER TABLE restaurants ADD COLUMN contact_phone TEXT DEFAULT ''",
+      "ALTER TABLE restaurants ADD COLUMN contact_email TEXT DEFAULT ''",
+      "ALTER TABLE restaurants ADD COLUMN contact_website TEXT DEFAULT ''",
+      "ALTER TABLE restaurants ADD COLUMN languages_json TEXT DEFAULT '[]'",
+      "ALTER TABLE restaurants ADD COLUMN default_language TEXT DEFAULT 'pt-BR'"
     ];
 
     for (const statement of alterStatements) {
@@ -320,6 +328,8 @@ function sanitizeUser(user) {
 }
 
 function mapRestaurantRow(row) {
+  const defaultLanguage = sanitizeLanguageCode(row.default_language || DEFAULT_LANGUAGE_CODE);
+  const languages = sanitizeLanguageList(parseJsonSafe(row.languages_json, []), defaultLanguage);
   return {
     id: row.id,
     name: row.name,
@@ -328,7 +338,17 @@ function mapRestaurantRow(row) {
     logo: row.logo || "",
     theme: { accent: row.accent || DEFAULT_ACCENT },
     template: row.template || "default",
-    heroImages: parseJsonSafe(row.hero_images_json, [])
+    heroImages: parseJsonSafe(row.hero_images_json, []),
+    contact: {
+      address: row.contact_address || "",
+      phone: row.contact_phone || "",
+      email: row.contact_email || "",
+      website: row.contact_website || ""
+    },
+    languageSettings: {
+      defaultLanguage,
+      languages
+    }
   };
 }
 
@@ -440,6 +460,39 @@ async function parseJsonBody(request) {
 
 function sanitizeText(value, max = 255) {
   return (value || "").toString().trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function sanitizeLanguageCode(value) {
+  const code = sanitizeText(value, 10);
+  if (!code) return DEFAULT_LANGUAGE_CODE;
+  if (DEFAULT_LANGUAGE_OPTIONS.includes(code)) return code;
+  return DEFAULT_LANGUAGE_CODE;
+}
+
+function sanitizeLanguageList(value, preferredDefault = DEFAULT_LANGUAGE_CODE) {
+  const raw = Array.isArray(value) ? value : [];
+  const ordered = [];
+  for (const item of raw) {
+    const code = sanitizeLanguageCode(item);
+    if (!ordered.includes(code)) ordered.push(code);
+  }
+
+  if (!ordered.length) {
+    ordered.push(...DEFAULT_LANGUAGE_OPTIONS);
+  }
+
+  const normalizedDefault = sanitizeLanguageCode(preferredDefault);
+  if (!ordered.includes(normalizedDefault)) {
+    ordered.unshift(normalizedDefault);
+  }
+
+  return ordered.slice(0, DEFAULT_LANGUAGE_OPTIONS.length);
+}
+
+function sanitizeContactEmail(value) {
+  const email = sanitizeText(value, 160).toLowerCase();
+  if (!email) return "";
+  return EMAIL_PATTERN.test(email) ? email : "";
 }
 
 function sanitizeNullableUrl(value, max = 600) {
@@ -1634,12 +1687,22 @@ async function handleApi(request, env, url) {
       logo: sanitizeNullableUrl(body.logo),
       accent: sanitizeText(body.accent || DEFAULT_ACCENT, 16) || DEFAULT_ACCENT,
       template: sanitizeText(body.template || "default", 60) || "default",
-      heroImages: []
+      heroImages: [],
+      contactAddress: sanitizeText(body.contactAddress || body.address, 220),
+      contactPhone: sanitizeText(body.contactPhone || body.phone, 80),
+      contactEmail: sanitizeContactEmail(body.contactEmail || body.email),
+      contactWebsite: sanitizeText(body.contactWebsite || body.website, 220),
+      defaultLanguage: sanitizeLanguageCode(body.defaultLanguage || DEFAULT_LANGUAGE_CODE),
+      languages: sanitizeLanguageList(body.languages, body.defaultLanguage || DEFAULT_LANGUAGE_CODE)
     };
+    if (!restaurant.languages.includes(restaurant.defaultLanguage)) {
+      restaurant.languages.unshift(restaurant.defaultLanguage);
+      restaurant.languages = restaurant.languages.slice(0, DEFAULT_LANGUAGE_OPTIONS.length);
+    }
     await env.DB.prepare(
       `INSERT INTO restaurants
-      (id, name, slug, description, logo, accent, template, hero_images_json)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      (id, name, slug, description, logo, accent, template, hero_images_json, contact_address, contact_phone, contact_email, contact_website, languages_json, default_language)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
     )
       .bind(
         restaurant.id,
@@ -1649,21 +1712,17 @@ async function handleApi(request, env, url) {
         restaurant.logo,
         restaurant.accent,
         restaurant.template,
-        JSON.stringify(restaurant.heroImages)
+        JSON.stringify(restaurant.heroImages),
+        restaurant.contactAddress,
+        restaurant.contactPhone,
+        restaurant.contactEmail,
+        restaurant.contactWebsite,
+        JSON.stringify(restaurant.languages),
+        restaurant.defaultLanguage
       )
       .run();
-    return json({
-      restaurant: {
-        id: restaurant.id,
-        name: restaurant.name,
-        slug: restaurant.slug,
-        description: restaurant.description,
-        logo: restaurant.logo,
-        theme: { accent: restaurant.accent },
-        template: restaurant.template,
-        heroImages: restaurant.heroImages
-      }
-    });
+    const persisted = await getRestaurantById(env, restaurant.id);
+    return json({ restaurant: persisted });
   }
 
   const restaurantUpdate = method === "PUT" && matchRoute("/api/restaurants/:id", pathname);
@@ -1679,6 +1738,42 @@ async function handleApi(request, env, url) {
     if (body.logo !== undefined) next.logo = sanitizeNullableUrl(body.logo);
     if (body.accent !== undefined) next.theme.accent = sanitizeText(body.accent, 16) || DEFAULT_ACCENT;
     if (body.template !== undefined) next.template = sanitizeText(body.template || "default", 60) || "default";
+    if (body.contactAddress !== undefined || body.address !== undefined) {
+      next.contact = next.contact || {};
+      next.contact.address = sanitizeText(body.contactAddress ?? body.address, 220);
+    }
+    if (body.contactPhone !== undefined || body.phone !== undefined) {
+      next.contact = next.contact || {};
+      next.contact.phone = sanitizeText(body.contactPhone ?? body.phone, 80);
+    }
+    if (body.contactEmail !== undefined || body.email !== undefined) {
+      next.contact = next.contact || {};
+      next.contact.email = sanitizeContactEmail(body.contactEmail ?? body.email);
+    }
+    if (body.contactWebsite !== undefined || body.website !== undefined) {
+      next.contact = next.contact || {};
+      next.contact.website = sanitizeText(body.contactWebsite ?? body.website, 220);
+    }
+    const currentDefaultLanguage =
+      (next.languageSettings && next.languageSettings.defaultLanguage) || DEFAULT_LANGUAGE_CODE;
+    if (body.defaultLanguage !== undefined) {
+      next.languageSettings = next.languageSettings || {};
+      next.languageSettings.defaultLanguage = sanitizeLanguageCode(body.defaultLanguage);
+    }
+    if (body.languages !== undefined) {
+      next.languageSettings = next.languageSettings || {};
+      const defaultCandidate =
+        (next.languageSettings && next.languageSettings.defaultLanguage) || currentDefaultLanguage;
+      next.languageSettings.languages = sanitizeLanguageList(body.languages, defaultCandidate);
+    }
+    next.languageSettings = next.languageSettings || {};
+    next.languageSettings.defaultLanguage = sanitizeLanguageCode(
+      next.languageSettings.defaultLanguage || currentDefaultLanguage
+    );
+    next.languageSettings.languages = sanitizeLanguageList(
+      next.languageSettings.languages || DEFAULT_LANGUAGE_OPTIONS,
+      next.languageSettings.defaultLanguage
+    );
     if (body.heroImages !== undefined && Array.isArray(body.heroImages)) {
       next.heroImages = body.heroImages
         .map((value) => sanitizeNullableUrl(value))
@@ -1697,8 +1792,10 @@ async function handleApi(request, env, url) {
     }
     await env.DB.prepare(
       `UPDATE restaurants
-       SET name = ?1, slug = ?2, description = ?3, logo = ?4, accent = ?5, template = ?6, hero_images_json = ?7
-       WHERE id = ?8`
+       SET name = ?1, slug = ?2, description = ?3, logo = ?4, accent = ?5, template = ?6, hero_images_json = ?7,
+           contact_address = ?8, contact_phone = ?9, contact_email = ?10, contact_website = ?11,
+           languages_json = ?12, default_language = ?13
+       WHERE id = ?14`
     )
       .bind(
         next.name,
@@ -1708,10 +1805,17 @@ async function handleApi(request, env, url) {
         next.theme.accent || DEFAULT_ACCENT,
         next.template || "default",
         JSON.stringify(next.heroImages || []),
+        (next.contact && next.contact.address) || "",
+        (next.contact && next.contact.phone) || "",
+        (next.contact && next.contact.email) || "",
+        (next.contact && next.contact.website) || "",
+        JSON.stringify((next.languageSettings && next.languageSettings.languages) || DEFAULT_LANGUAGE_OPTIONS),
+        (next.languageSettings && next.languageSettings.defaultLanguage) || DEFAULT_LANGUAGE_CODE,
         next.id
       )
       .run();
-    return json({ restaurant: next });
+    const persisted = await getRestaurantById(env, next.id);
+    return json({ restaurant: persisted || next });
   }
 
   const createRestaurantUser = method === "POST" && matchRoute("/api/restaurants/:id/users", pathname);

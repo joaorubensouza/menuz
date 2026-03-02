@@ -17,7 +17,13 @@ CREATE TABLE IF NOT EXISTS restaurants (
   logo TEXT DEFAULT '',
   accent TEXT DEFAULT '#D95F2B',
   template TEXT DEFAULT 'default',
-  hero_images_json TEXT DEFAULT '[]'
+  hero_images_json TEXT DEFAULT '[]',
+  contact_address TEXT DEFAULT '',
+  contact_phone TEXT DEFAULT '',
+  contact_email TEXT DEFAULT '',
+  contact_website TEXT DEFAULT '',
+  languages_json TEXT DEFAULT '[]',
+  default_language TEXT DEFAULT 'pt-BR'
 );
 
 CREATE TABLE IF NOT EXISTS items (

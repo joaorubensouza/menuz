@@ -86,6 +86,8 @@ const sectionOrders = document.getElementById("orders-list");
 const sectionRestaurant = document.getElementById("restaurant-edit-form");
 
 const THEME_KEY = "menuz_theme";
+const LANGUAGE_CODES = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
+const DEFAULT_LANGUAGE_CODE = "pt-BR";
 
 async function api(path, options = {}) {
   const config = { ...options };
@@ -102,6 +104,39 @@ async function api(path, options = {}) {
     throw new Error(data.error || "request_failed");
   }
   return res.json();
+}
+
+function getSelectedLanguages(selectId) {
+  const select = document.getElementById(selectId);
+  if (!select) return [...LANGUAGE_CODES];
+  const selected = Array.from(select.selectedOptions || [])
+    .map((option) => option.value)
+    .filter((value, index, arr) => LANGUAGE_CODES.includes(value) && arr.indexOf(value) === index);
+  return selected.length ? selected : [...LANGUAGE_CODES];
+}
+
+function setSelectedLanguages(selectId, values) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  const allowed = Array.isArray(values) && values.length ? values : [DEFAULT_LANGUAGE_CODE];
+  Array.from(select.options).forEach((option) => {
+    option.selected = allowed.includes(option.value);
+  });
+}
+
+function normalizeDefaultLanguage(value) {
+  return LANGUAGE_CODES.includes(value) ? value : DEFAULT_LANGUAGE_CODE;
+}
+
+function syncLanguageControls(defaultSelectId, listSelectId) {
+  const defaultSelect = document.getElementById(defaultSelectId);
+  const listSelect = document.getElementById(listSelectId);
+  if (!defaultSelect || !listSelect) return;
+  const defaultLanguage = normalizeDefaultLanguage(defaultSelect.value);
+  const selected = getSelectedLanguages(listSelectId);
+  if (!selected.includes(defaultLanguage)) {
+    setSelectedLanguages(listSelectId, [defaultLanguage, ...selected]);
+  }
 }
 
 function getProviderLabel(providerId) {
@@ -166,6 +201,35 @@ function initThemeSelector() {
     const nextTheme = themeSelect.value;
     localStorage.setItem(THEME_KEY, nextTheme);
     applyTheme(nextTheme);
+  });
+}
+
+function initRestaurantLanguageControls() {
+  const map = [
+    ["restaurant-default-language", "restaurant-languages"],
+    ["edit-default-language", "edit-languages"]
+  ];
+
+  map.forEach(([defaultId, listId]) => {
+    const defaultSelect = document.getElementById(defaultId);
+    const listSelect = document.getElementById(listId);
+    if (!defaultSelect || !listSelect) return;
+
+    const preSelected = getSelectedLanguages(listId);
+    if (preSelected.length <= 1) {
+      setSelectedLanguages(listId, LANGUAGE_CODES);
+    }
+    defaultSelect.value = normalizeDefaultLanguage(defaultSelect.value);
+
+    defaultSelect.addEventListener("change", () => {
+      syncLanguageControls(defaultId, listId);
+    });
+
+    listSelect.addEventListener("change", () => {
+      syncLanguageControls(defaultId, listId);
+    });
+
+    syncLanguageControls(defaultId, listId);
   });
 }
 
@@ -277,13 +341,26 @@ logoutBtn.addEventListener("click", async () => {
 
 restaurantForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const createDefaultLanguage = normalizeDefaultLanguage(
+    document.getElementById("restaurant-default-language").value
+  );
+  const createLanguages = getSelectedLanguages("restaurant-languages");
+  if (!createLanguages.includes(createDefaultLanguage)) {
+    createLanguages.unshift(createDefaultLanguage);
+  }
   const payload = {
     name: document.getElementById("restaurant-name").value.trim(),
     slug: document.getElementById("restaurant-slug").value.trim(),
     description: document.getElementById("restaurant-desc").value.trim(),
     logo: document.getElementById("restaurant-logo").value.trim(),
     accent: document.getElementById("restaurant-accent").value.trim(),
-    template: document.getElementById("restaurant-template").value.trim()
+    template: document.getElementById("restaurant-template").value.trim(),
+    contactAddress: document.getElementById("restaurant-contact-address").value.trim(),
+    contactPhone: document.getElementById("restaurant-contact-phone").value.trim(),
+    contactEmail: document.getElementById("restaurant-contact-email").value.trim(),
+    contactWebsite: document.getElementById("restaurant-contact-website").value.trim(),
+    defaultLanguage: createDefaultLanguage,
+    languages: createLanguages
   };
   const data = await api("/api/restaurants", {
     method: "POST",
@@ -292,18 +369,34 @@ restaurantForm.addEventListener("submit", async (event) => {
   state.restaurants.push(data.restaurant);
   renderRestaurants();
   restaurantForm.reset();
+  document.getElementById("restaurant-default-language").value = DEFAULT_LANGUAGE_CODE;
+  setSelectedLanguages("restaurant-languages", LANGUAGE_CODES);
+  syncLanguageControls("restaurant-default-language", "restaurant-languages");
 });
 
 restaurantEditForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.activeRestaurant) return;
+  const editDefaultLanguage = normalizeDefaultLanguage(
+    document.getElementById("edit-default-language").value
+  );
+  const editLanguages = getSelectedLanguages("edit-languages");
+  if (!editLanguages.includes(editDefaultLanguage)) {
+    editLanguages.unshift(editDefaultLanguage);
+  }
   const payload = {
     name: document.getElementById("edit-name").value.trim(),
     slug: document.getElementById("edit-slug").value.trim(),
     description: document.getElementById("edit-desc").value.trim(),
     logo: document.getElementById("edit-logo").value.trim(),
     accent: document.getElementById("edit-accent").value.trim(),
-    template: document.getElementById("edit-template").value.trim()
+    template: document.getElementById("edit-template").value.trim(),
+    contactAddress: document.getElementById("edit-contact-address").value.trim(),
+    contactPhone: document.getElementById("edit-contact-phone").value.trim(),
+    contactEmail: document.getElementById("edit-contact-email").value.trim(),
+    contactWebsite: document.getElementById("edit-contact-website").value.trim(),
+    defaultLanguage: editDefaultLanguage,
+    languages: editLanguages
   };
   const data = await api(`/api/restaurants/${state.activeRestaurant.id}`, {
     method: "PUT",
@@ -546,6 +639,17 @@ function fillRestaurantForm(restaurant) {
   document.getElementById("edit-accent").value =
     (restaurant.theme && restaurant.theme.accent) || "";
   document.getElementById("edit-template").value = restaurant.template || "default";
+  const contact = restaurant.contact || {};
+  const languageSettings = restaurant.languageSettings || {};
+  document.getElementById("edit-contact-address").value = contact.address || "";
+  document.getElementById("edit-contact-phone").value = contact.phone || "";
+  document.getElementById("edit-contact-email").value = contact.email || "";
+  document.getElementById("edit-contact-website").value = contact.website || "";
+  document.getElementById("edit-default-language").value = normalizeDefaultLanguage(
+    languageSettings.defaultLanguage
+  );
+  setSelectedLanguages("edit-languages", languageSettings.languages || LANGUAGE_CODES);
+  syncLanguageControls("edit-default-language", "edit-languages");
 }
 
 function populateModelJobItems() {
@@ -1384,5 +1488,6 @@ function stopScanner() {
 }
 
 initThemeSelector();
+initRestaurantLanguageControls();
 initLizzChatbot();
 init();

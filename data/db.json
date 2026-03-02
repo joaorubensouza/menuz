@@ -82,6 +82,23 @@
         "accent": "#a93124"
       },
       "template": "topo-do-mundo",
+      "contact": {
+        "address": "Rua Senador Milton Campos, 145, Vila da Serra, Nova Lima - MG, Brasil",
+        "phone": "(31) 99711-0124",
+        "email": "topodomundo@topodomundo.com",
+        "website": "www.topodomundo.com"
+      },
+      "languageSettings": {
+        "defaultLanguage": "pt-BR",
+        "languages": [
+          "pt-BR",
+          "en-US",
+          "es-ES",
+          "fr-FR",
+          "it-IT",
+          "de-DE"
+        ]
+      },
       "heroImages": [
         "/uploads/images/topo1.webp",
         "/uploads/images/topo2.webp",

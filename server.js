@@ -53,6 +53,8 @@ const loginAttempts = new Map();
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LANGUAGE_CODES = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
+const DEFAULT_LANGUAGE_CODE = "pt-BR";
 
 function normalizeEmail(value) {
   return (value || "").toString().trim().toLowerCase();
@@ -166,6 +168,59 @@ function normalizeSlug(text) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+function normalizeLanguageCode(value) {
+  return LANGUAGE_CODES.includes(value) ? value : DEFAULT_LANGUAGE_CODE;
+}
+
+function normalizeLanguageList(value, preferredDefault = DEFAULT_LANGUAGE_CODE) {
+  const input = Array.isArray(value) ? value : [];
+  const unique = [];
+  input.forEach((code) => {
+    const normalized = normalizeLanguageCode(code);
+    if (!unique.includes(normalized)) unique.push(normalized);
+  });
+  if (!unique.length) unique.push(...LANGUAGE_CODES);
+  const defaultCode = normalizeLanguageCode(preferredDefault);
+  if (!unique.includes(defaultCode)) unique.unshift(defaultCode);
+  return unique.slice(0, LANGUAGE_CODES.length);
+}
+
+function sanitizeContactEmail(value) {
+  const email = normalizeEmail(value);
+  if (!email) return "";
+  return EMAIL_PATTERN.test(email) ? email : "";
+}
+
+function normalizeRestaurantRecord(raw = {}) {
+  const next = { ...raw };
+  if (!next.theme || typeof next.theme !== "object") {
+    next.theme = { accent: "#D95F2B" };
+  } else if (!next.theme.accent) {
+    next.theme.accent = "#D95F2B";
+  }
+  if (!Array.isArray(next.heroImages)) {
+    next.heroImages = [];
+  }
+  if (!next.contact || typeof next.contact !== "object") {
+    next.contact = { address: "", phone: "", email: "", website: "" };
+  } else {
+    next.contact = {
+      address: next.contact.address || "",
+      phone: next.contact.phone || "",
+      email: next.contact.email || "",
+      website: next.contact.website || ""
+    };
+  }
+  const currentDefault =
+    (next.languageSettings && next.languageSettings.defaultLanguage) || DEFAULT_LANGUAGE_CODE;
+  const languageSettings = next.languageSettings || {};
+  next.languageSettings = {
+    defaultLanguage: normalizeLanguageCode(currentDefault),
+    languages: normalizeLanguageList(languageSettings.languages, currentDefault)
+  };
+  return next;
 }
 
 async function readDb() {
@@ -635,7 +690,7 @@ app.get("/api/public/restaurant/:slug", async (req, res) => {
     return res.status(404).json({ error: "restaurant_not_found" });
   }
   const items = db.items.filter((i) => i.restaurantId === restaurant.id);
-  res.json({ restaurant, items });
+  res.json({ restaurant: normalizeRestaurantRecord(restaurant), items });
 });
 
 app.get("/api/public/item/:id", async (req, res) => {
@@ -707,7 +762,7 @@ app.get("/api/my-restaurant", requireAuth, async (req, res) => {
   if (!restaurant) {
     return res.status(404).json({ error: "restaurant_not_found" });
   }
-  res.json({ restaurant });
+  res.json({ restaurant: normalizeRestaurantRecord(restaurant) });
 });
 
 app.post("/api/logout", requireAuth, async (req, res) => {
@@ -717,7 +772,7 @@ app.post("/api/logout", requireAuth, async (req, res) => {
 });
 
 app.get("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
-  res.json({ restaurants: req.db.restaurants });
+  res.json({ restaurants: (req.db.restaurants || []).map(normalizeRestaurantRecord) });
 });
 
 app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
@@ -740,11 +795,21 @@ app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
     description: description || "",
     logo: req.body.logo || "",
     theme: { accent: req.body.accent || "#D95F2B" },
-    template: req.body.template || "default"
+    template: req.body.template || "default",
+    contact: {
+      address: (req.body.contactAddress || req.body.address || "").toString().trim(),
+      phone: (req.body.contactPhone || req.body.phone || "").toString().trim(),
+      email: sanitizeContactEmail(req.body.contactEmail || req.body.email),
+      website: (req.body.contactWebsite || req.body.website || "").toString().trim()
+    },
+    languageSettings: {
+      defaultLanguage: normalizeLanguageCode(req.body.defaultLanguage),
+      languages: normalizeLanguageList(req.body.languages, req.body.defaultLanguage)
+    }
   };
   db.restaurants.push(restaurant);
   await writeDb(db);
-  res.json({ restaurant });
+  res.json({ restaurant: normalizeRestaurantRecord(restaurant) });
 });
 
 app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, res) => {
@@ -766,8 +831,48 @@ app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, re
   if (req.body.template !== undefined) {
     restaurant.template = req.body.template || "default";
   }
+  if (req.body.contactAddress !== undefined || req.body.address !== undefined) {
+    restaurant.contact = restaurant.contact || {};
+    restaurant.contact.address = (req.body.contactAddress || req.body.address || "").toString().trim();
+  }
+  if (req.body.contactPhone !== undefined || req.body.phone !== undefined) {
+    restaurant.contact = restaurant.contact || {};
+    restaurant.contact.phone = (req.body.contactPhone || req.body.phone || "").toString().trim();
+  }
+  if (req.body.contactEmail !== undefined || req.body.email !== undefined) {
+    restaurant.contact = restaurant.contact || {};
+    restaurant.contact.email = sanitizeContactEmail(req.body.contactEmail || req.body.email);
+  }
+  if (req.body.contactWebsite !== undefined || req.body.website !== undefined) {
+    restaurant.contact = restaurant.contact || {};
+    restaurant.contact.website = (req.body.contactWebsite || req.body.website || "").toString().trim();
+  }
+  const currentDefaultLanguage =
+    restaurant.languageSettings && restaurant.languageSettings.defaultLanguage
+      ? restaurant.languageSettings.defaultLanguage
+      : DEFAULT_LANGUAGE_CODE;
+  if (req.body.defaultLanguage !== undefined) {
+    restaurant.languageSettings = restaurant.languageSettings || {};
+    restaurant.languageSettings.defaultLanguage = normalizeLanguageCode(req.body.defaultLanguage);
+  }
+  if (req.body.languages !== undefined) {
+    restaurant.languageSettings = restaurant.languageSettings || {};
+    restaurant.languageSettings.languages = normalizeLanguageList(
+      req.body.languages,
+      restaurant.languageSettings.defaultLanguage || currentDefaultLanguage
+    );
+  }
+  restaurant.languageSettings = {
+    defaultLanguage: normalizeLanguageCode(
+      (restaurant.languageSettings && restaurant.languageSettings.defaultLanguage) || currentDefaultLanguage
+    ),
+    languages: normalizeLanguageList(
+      restaurant.languageSettings && restaurant.languageSettings.languages,
+      (restaurant.languageSettings && restaurant.languageSettings.defaultLanguage) || currentDefaultLanguage
+    )
+  };
   await writeDb(db);
-  res.json({ restaurant });
+  res.json({ restaurant: normalizeRestaurantRecord(restaurant) });
 });
 
 app.post(
