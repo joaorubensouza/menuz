@@ -15,7 +15,18 @@ export default {
       response = await handleRequest(request, env);
     } catch (error) {
       console.error("Unhandled worker error", error);
-      response = json({ error: "internal_error" }, 500);
+      if ((env.DEBUG_ERRORS || "").toString() === "1") {
+        response = json(
+          {
+            error: "internal_error",
+            detail: error?.message || String(error),
+            stack: (error && error.stack) ? String(error.stack) : ""
+          },
+          500
+        );
+      } else {
+        response = json({ error: "internal_error" }, 500);
+      }
     }
     return withSecurityHeaders(request, response);
   }
@@ -36,7 +47,8 @@ async function handleRequest(request, env) {
 
   const redirectItem = matchRoute("/i/:id", pathname);
   if (redirectItem) {
-    return Response.redirect(`/item.html?id=${encodeURIComponent(redirectItem.id)}`, 302);
+    const target = new URL(`/item.html?id=${encodeURIComponent(redirectItem.id)}`, url);
+    return Response.redirect(target.toString(), 302);
   }
 
   if (pathname.startsWith("/api/")) {
@@ -434,9 +446,11 @@ async function handleRestaurantRedirect(url, env, slug) {
 
   const restaurant = await getRestaurantBySlug(env, slug);
   if (restaurant && restaurant.template === "topo-do-mundo") {
-    return Response.redirect(`/templates/topo-do-mundo.html?${params.toString()}`, 302);
+    const target = new URL(`/templates/topo-do-mundo.html?${params.toString()}`, url);
+    return Response.redirect(target.toString(), 302);
   }
-  return Response.redirect(`/?${params.toString()}`, 302);
+  const fallback = new URL(`/?${params.toString()}`, url);
+  return Response.redirect(fallback.toString(), 302);
 }
 
 async function handleUploads(request, env, pathname) {

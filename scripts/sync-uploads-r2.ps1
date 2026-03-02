@@ -25,7 +25,7 @@ foreach ($file in $files) {
   $relative = $file.FullName.Substring($fullUploadsPath.Length + 1).Replace("\", "/")
   $target = "$Bucket/$relative"
   Write-Host "[$index/$total] $target"
-  npx wrangler r2 object put $target --file "$($file.FullName)" | Out-Null
+  npx wrangler r2 object put $target --file "$($file.FullName)" --remote | Out-Null
 }
 
 Write-Host "Upload concluido: $total arquivos enviados para $Bucket."
