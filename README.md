@@ -22,6 +22,17 @@ Demo logins:
    - upload photos
    - `Rodar IA`
    - `Sincronizar` until `revisao` or `publicado`
+   - `Avaliar QA` para gerar score de qualidade
+   - `Publicar` (gate exige GLB + USDZ e score minimo)
+
+## Security baseline (already applied)
+
+- Login lock por IP (`LOGIN_*`)
+- Rate limit para pedido publico (`ORDER_*`)
+- Rate limit para chamadas de IA (`AI_ACTION_*`)
+- Hardening de headers (CSP, HSTS, frame deny, etc.)
+- Sanitizacao de entrada para restaurante/item/pedido
+- Gate de publicacao de modelo por score QA (`QA_MIN_PUBLISH_SCORE`)
 
 ## Cloud-native migration (Worker + D1 + R2)
 
@@ -45,3 +56,9 @@ Main files:
 - `scripts/export-db-sql.mjs`
 - `scripts/sync-uploads-r2.ps1`
 - `scripts/migrar-cloudflare-native.ps1`
+
+## Plano em PDF
+
+- Fonte (editavel): `docs/plano-execucao-menuz.md`
+- PDF gerado: `docs/plano-execucao-menuz.pdf`
+- Regenerar PDF: `node scripts/generate-plan-pdf.mjs`

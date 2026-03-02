@@ -572,6 +572,9 @@ function renderModelJobs() {
     const referenceCount = Array.isArray(job.referenceImages)
       ? job.referenceImages.length
       : 0;
+    const qaScore = Number(job.qaScore) || 0;
+    const qaBand = (job.qaBand || "fraca").toString();
+    const qaChecklist = Array.isArray(job.qaChecklist) ? job.qaChecklist : [];
     const updatedAt = job.updatedAt
       ? new Date(job.updatedAt).toLocaleString("pt-BR")
       : "-";
@@ -581,6 +584,8 @@ function renderModelJobs() {
         <div class="muted">${sourceLabel} - ${job.autoMode ? "automatico" : "assistido"}</div>
         <div class="muted">Provedor: ${providerLabel} (${providerStatus})</div>
         <div class="muted">Fotos referencia: ${referenceCount}</div>
+        <div class="muted">QA: ${qaScore}/100 (${qaBand})</div>
+        <div class="muted">Checklist: ${qaChecklist.slice(0, 3).join(" | ") || "pendente"}</div>
         <div class="muted">Atualizado: ${updatedAt}</div>
       </div>
       <div>
@@ -606,6 +611,7 @@ function renderModelJobs() {
         <input class="input" data-field="glb" placeholder="GLB URL" value="${job.modelGlb || ""}" />
         <input class="input" data-field="usdz" placeholder="USDZ URL" value="${job.modelUsdz || ""}" />
         <input class="input" data-field="ai-model" placeholder="Modelo IA" value="${job.aiModel || ""}" />
+        <textarea class="input" data-field="qa-notes" placeholder="Notas de QA">${job.qaNotes || ""}</textarea>
         <select class="input" data-field="provider">
           ${(state.aiProviders.length
             ? state.aiProviders
@@ -621,6 +627,8 @@ function renderModelJobs() {
         <div class="table-actions">
           <button class="btn btn-outline" data-action="ai-start">Rodar IA</button>
           <button class="btn btn-outline" data-action="ai-sync">Sincronizar</button>
+          <button class="btn btn-outline" data-action="qa-evaluate">Avaliar QA</button>
+          <button class="btn" data-action="publish-job">Publicar</button>
           <button class="btn btn-outline" data-action="delete-job">Excluir job</button>
         </div>
         <input
@@ -638,6 +646,8 @@ function renderModelJobs() {
     const saveButton = row.querySelector("[data-action='save']");
     const aiStartButton = row.querySelector("[data-action='ai-start']");
     const aiSyncButton = row.querySelector("[data-action='ai-sync']");
+    const qaEvaluateButton = row.querySelector("[data-action='qa-evaluate']");
+    const publishJobButton = row.querySelector("[data-action='publish-job']");
     const deleteJobButton = row.querySelector("[data-action='delete-job']");
     const uploadImagesButton = row.querySelector("[data-action='upload-images']");
 
@@ -647,11 +657,12 @@ function renderModelJobs() {
       const modelUsdz = row.querySelector("[data-field='usdz']").value.trim();
       const provider = row.querySelector("[data-field='provider']").value;
       const aiModel = row.querySelector("[data-field='ai-model']").value.trim();
+      const qaNotes = row.querySelector("[data-field='qa-notes']").value.trim();
       saveButton.disabled = true;
       try {
         await api(`/api/model-jobs/${job.id}`, {
           method: "PUT",
-          body: JSON.stringify({ status, modelGlb, modelUsdz, provider, aiModel })
+          body: JSON.stringify({ status, modelGlb, modelUsdz, provider, aiModel, qaNotes })
         });
         if (status === "publicado") {
           await loadItems(state.activeRestaurant.id);
@@ -698,6 +709,44 @@ function renderModelJobs() {
         modelJobMsg.textContent = "Falha ao sincronizar resultado IA deste job.";
       } finally {
         aiSyncButton.disabled = false;
+      }
+    });
+
+    qaEvaluateButton.addEventListener("click", async () => {
+      qaEvaluateButton.disabled = true;
+      modelJobMsg.textContent = "";
+      try {
+        const qaNotes = row.querySelector("[data-field='qa-notes']").value.trim();
+        const data = await api(`/api/model-jobs/${job.id}/qa/evaluate`, {
+          method: "POST",
+          body: JSON.stringify({ qaNotes })
+        });
+        modelJobMsg.textContent = `QA atualizado: ${data.evaluation.score}/100 (${data.evaluation.band}).`;
+        await loadModelJobs(state.activeRestaurant.id);
+      } catch (err) {
+        modelJobMsg.textContent = "Falha ao avaliar QA deste job.";
+      } finally {
+        qaEvaluateButton.disabled = false;
+      }
+    });
+
+    publishJobButton.addEventListener("click", async () => {
+      publishJobButton.disabled = true;
+      modelJobMsg.textContent = "";
+      try {
+        await api(`/api/model-jobs/${job.id}/publish`, { method: "POST" });
+        modelJobMsg.textContent = "Job publicado e aplicado no item.";
+        await loadItems(state.activeRestaurant.id);
+        await loadModelJobs(state.activeRestaurant.id);
+      } catch (err) {
+        if (err.message === "publish_gate_failed") {
+          modelJobMsg.textContent =
+            "Publicacao bloqueada: faltam modelos GLB+USDZ ou score de QA abaixo do minimo.";
+        } else {
+          modelJobMsg.textContent = "Falha ao publicar job.";
+        }
+      } finally {
+        publishJobButton.disabled = false;
       }
     });
 
@@ -908,6 +957,12 @@ function getLizzResponse(message) {
     return {
       reply:
         "Para gerar 3D: crie um job em 'Fila 3D', escolha prato, fonte e provedor. Em seguida clique 'Rodar IA' e depois 'Sincronizar'."
+    };
+  }
+  if (text.includes("qa") || text.includes("qualidade")) {
+    return {
+      reply:
+        "No job 3D, use 'Avaliar QA'. O sistema calcula score (0-100). Para publicar, precisa GLB+USDZ e score minimo."
     };
   }
   if (text.includes("public") || text.includes("cardapio")) {

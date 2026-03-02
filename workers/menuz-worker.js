@@ -4,9 +4,22 @@ const MESHY_API_BASE = "https://api.meshy.ai/openapi/v1";
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
+const PUBLIC_EVENT_TYPES = new Set([
+  "menu_view",
+  "item_view",
+  "ar_open",
+  "add_to_cart",
+  "order_submit",
+  "qr_scan"
+]);
+const JSON_HEADERS = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store"
+};
 const DEFAULT_ACCENT = "#D95F2B";
 const encoder = new TextEncoder();
+let schemaInitPromise = null;
 
 export default {
   async fetch(request, env) {
@@ -62,6 +75,67 @@ async function handleRequest(request, env) {
   return env.ASSETS.fetch(request);
 }
 
+async function ensureRuntimeSchema(env) {
+  if (schemaInitPromise) return schemaInitPromise;
+  schemaInitPromise = (async () => {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS rate_limits (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        window_start INTEGER NOT NULL DEFAULT 0
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL,
+        item_id TEXT DEFAULT '',
+        event_type TEXT NOT NULL,
+        table_label TEXT DEFAULT '',
+        ip_hash TEXT DEFAULT '',
+        user_agent TEXT DEFAULT '',
+        meta_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_events_restaurant_created ON events(restaurant_id, created_at)"
+    ).run();
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at)"
+    ).run();
+
+    const alterStatements = [
+      "ALTER TABLE model_jobs ADD COLUMN qa_score INTEGER DEFAULT 0",
+      "ALTER TABLE model_jobs ADD COLUMN qa_band TEXT DEFAULT 'fraca'",
+      "ALTER TABLE model_jobs ADD COLUMN qa_checklist_json TEXT DEFAULT '[]'",
+      "ALTER TABLE model_jobs ADD COLUMN qa_notes TEXT DEFAULT ''"
+    ];
+
+    for (const statement of alterStatements) {
+      try {
+        await env.DB.prepare(statement).run();
+      } catch (error) {
+        const message = (error && error.message ? error.message : "").toLowerCase();
+        if (!message.includes("duplicate column name")) {
+          throw error;
+        }
+      }
+    }
+  })();
+
+  try {
+    await schemaInitPromise;
+  } catch (error) {
+    schemaInitPromise = null;
+    throw error;
+  }
+}
+
 function withSecurityHeaders(request, response) {
   const url = new URL(request.url);
   const headers = new Headers(response.headers);
@@ -69,6 +143,23 @@ function withSecurityHeaders(request, response) {
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  headers.set(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' https://cdn.jsdelivr.net",
+      "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' https: data: blob:",
+      "connect-src 'self' https://api.meshy.ai",
+      "media-src 'self' data: blob:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join("; ")
+  );
+  headers.set("Cross-Origin-Resource-Policy", "same-site");
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
   if (url.protocol === "https:") {
     headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
@@ -154,6 +245,11 @@ async function sha256Hex(value) {
 async function hashSessionToken(token, env) {
   const secret = (env.SESSION_SECRET || "").toString().trim() || "dev-session-secret-change-me";
   return sha256Hex(`${secret}:${token}`);
+}
+
+async function hashEventIp(ip, env) {
+  const secret = (env.SESSION_SECRET || "").toString().trim() || "dev-session-secret-change-me";
+  return sha256Hex(`event:${secret}:${ip || "unknown"}`);
 }
 
 async function hashPassword(password) {
@@ -248,6 +344,20 @@ function mapItemRow(row) {
   };
 }
 
+function toPublicItem(item) {
+  return {
+    id: item.id,
+    restaurantId: item.restaurantId,
+    name: item.name,
+    description: item.description || "",
+    price: Number(item.price) || 0,
+    image: item.image || "",
+    modelGlb: item.modelGlb || "",
+    modelUsdz: item.modelUsdz || "",
+    category: item.category || ""
+  };
+}
+
 function mapOrderRow(row) {
   return {
     id: row.id,
@@ -277,6 +387,10 @@ function mapModelJobRow(row) {
     providerTaskId: row.provider_task_id || "",
     providerTaskEndpoint: row.provider_task_endpoint || "",
     providerStatus: row.provider_status || "",
+    qaScore: toInt(row.qa_score, 0),
+    qaBand: (row.qa_band || "fraca").toString(),
+    qaChecklist: parseJsonSafe(row.qa_checklist_json, []),
+    qaNotes: row.qa_notes || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: row.created_by || ""
@@ -301,6 +415,13 @@ function getConfig(env) {
     loginWindowMs: toInt(env.LOGIN_WINDOW_MS, 15 * 60 * 1000),
     loginMaxAttempts: toInt(env.LOGIN_MAX_ATTEMPTS, 6),
     loginLockMs: toInt(env.LOGIN_LOCK_MS, 15 * 60 * 1000),
+    orderWindowMs: toInt(env.ORDER_WINDOW_MS, 5 * 60 * 1000),
+    orderMaxPerWindow: toInt(env.ORDER_MAX_PER_WINDOW, 20),
+    eventWindowMs: toInt(env.PUBLIC_EVENT_WINDOW_MS, 5 * 60 * 1000),
+    eventMaxPerWindow: toInt(env.PUBLIC_EVENT_MAX_PER_WINDOW, 200),
+    aiActionWindowMs: toInt(env.AI_ACTION_WINDOW_MS, 60 * 1000),
+    aiActionMaxPerWindow: toInt(env.AI_ACTION_MAX_PER_WINDOW, 12),
+    qaMinPublishScore: toInt(env.QA_MIN_PUBLISH_SCORE, 70),
     meshyModel: (env.MESHY_AI_MODEL || "meshy-6").toString(),
     meshyMaxImages: Math.max(1, Math.min(8, toInt(env.MESHY_MAX_REFERENCE_IMAGES, 4)))
   };
@@ -312,6 +433,206 @@ async function parseJsonBody(request) {
   } catch {
     return {};
   }
+}
+
+function sanitizeText(value, max = 255) {
+  return (value || "").toString().trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function sanitizeNullableUrl(value, max = 600) {
+  const text = sanitizeText(value, max);
+  if (!text) return "";
+  if (text.startsWith("/uploads/")) return text;
+  if (isRemoteHttpUrl(text)) return text;
+  return "";
+}
+
+function sanitizePrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  if (num < 0) return 0;
+  if (num > 99999) return 99999;
+  return Math.round(num * 100) / 100;
+}
+
+function sanitizeTableLabel(value) {
+  const table = sanitizeText(value, 32);
+  if (!TABLE_PATTERN.test(table)) return "";
+  return table;
+}
+
+function sanitizeEventType(value) {
+  const eventType = sanitizeText(value, 40).toLowerCase();
+  if (!PUBLIC_EVENT_TYPES.has(eventType)) return "";
+  return eventType;
+}
+
+function toModelQualityBand(score) {
+  if (score >= 85) return "excelente";
+  if (score >= 70) return "boa";
+  if (score >= 55) return "aceitavel";
+  return "fraca";
+}
+
+async function inspectUploadedModel(env, urlValue) {
+  const key = urlToR2Key(urlValue);
+  if (!key) return { exists: false, size: 0 };
+  const object = await env.UPLOADS.head(key);
+  if (!object) return { exists: false, size: 0 };
+  return { exists: true, size: Number(object.size) || 0 };
+}
+
+async function evaluateJobQuality(env, item, job) {
+  let score = 0;
+  const checklist = [];
+  const referenceCount = Array.isArray(job.referenceImages) ? job.referenceImages.length : 0;
+  const scanCount = Array.isArray(item.scans) ? item.scans.length : 0;
+  const totalRefs = referenceCount + scanCount;
+
+  if (totalRefs >= 12) {
+    score += 20;
+    checklist.push("captura_fotos:ok");
+  } else if (totalRefs >= 8) {
+    score += 16;
+    checklist.push("captura_fotos:boa");
+  } else if (totalRefs >= 4) {
+    score += 10;
+    checklist.push("captura_fotos:minima");
+  } else {
+    checklist.push("captura_fotos:insuficiente");
+  }
+
+  const glbInfo = await inspectUploadedModel(env, job.modelGlb || "");
+  const usdzInfo = await inspectUploadedModel(env, job.modelUsdz || "");
+  const hasGlb = Boolean(job.modelGlb);
+  const hasUsdz = Boolean(job.modelUsdz);
+
+  if (hasGlb) {
+    score += 18;
+    checklist.push("arquivo_glb:ok");
+  } else {
+    checklist.push("arquivo_glb:ausente");
+  }
+  if (hasUsdz) {
+    score += 18;
+    checklist.push("arquivo_usdz:ok");
+  } else {
+    checklist.push("arquivo_usdz:ausente");
+  }
+
+  if (glbInfo.exists && glbInfo.size >= 150 * 1024 && glbInfo.size <= 40 * 1024 * 1024) {
+    score += 10;
+    checklist.push("peso_glb:ok");
+  } else if (hasGlb) {
+    checklist.push("peso_glb:revisar");
+  }
+
+  if (usdzInfo.exists && usdzInfo.size >= 150 * 1024 && usdzInfo.size <= 40 * 1024 * 1024) {
+    score += 10;
+    checklist.push("peso_usdz:ok");
+  } else if (hasUsdz) {
+    checklist.push("peso_usdz:revisar");
+  }
+
+  if ((job.providerStatus || "").toUpperCase() === "SUCCEEDED") {
+    score += 10;
+    checklist.push("status_ia:sucesso");
+  } else if ((job.providerStatus || "").toUpperCase() === "FAILED") {
+    checklist.push("status_ia:falha");
+  } else {
+    checklist.push("status_ia:pendente");
+  }
+
+  if ((job.notes || "").length >= 20) {
+    score += 4;
+    checklist.push("observacoes:ok");
+  } else {
+    checklist.push("observacoes:curtas");
+  }
+
+  const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    score: boundedScore,
+    band: toModelQualityBand(boundedScore),
+    checklist
+  };
+}
+
+async function recordPublicEvent(env, request, payload) {
+  const eventType = sanitizeEventType(payload.eventType);
+  if (!eventType) return { ok: false, error: "event_invalid" };
+  const restaurantId = sanitizeText(payload.restaurantId, 80);
+  if (!restaurantId) return { ok: false, error: "restaurant_required" };
+  const itemId = sanitizeText(payload.itemId, 80);
+  const tableLabel = sanitizeTableLabel(payload.table || "");
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+  const safeMeta = JSON.stringify(meta).slice(0, 2000);
+  const ipHash = await hashEventIp(getClientIp(request), env);
+  const userAgent = sanitizeText(request.headers.get("user-agent") || "", 220);
+
+  await env.DB.prepare(
+    `INSERT INTO events
+      (id, restaurant_id, item_id, event_type, table_label, ip_hash, user_agent, meta_json, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+  )
+    .bind(
+      `e-${crypto.randomUUID()}`,
+      restaurantId,
+      itemId || null,
+      eventType,
+      tableLabel || "",
+      ipHash,
+      userAgent,
+      safeMeta,
+      new Date().toISOString()
+    )
+    .run();
+
+  return { ok: true };
+}
+
+async function consumeRateLimit(env, key, max, windowMs) {
+  const now = Date.now();
+  if (Math.random() < 0.02) {
+    await env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ?1")
+      .bind(now - 24 * 60 * 60 * 1000)
+      .run();
+  }
+  const row = await env.DB.prepare(
+    "SELECT key, count, window_start FROM rate_limits WHERE key = ?1"
+  )
+    .bind(key)
+    .first();
+
+  if (!row) {
+    await env.DB.prepare(
+      "INSERT OR REPLACE INTO rate_limits (key, count, window_start) VALUES (?1, 1, ?2)"
+    )
+      .bind(key, now)
+      .run();
+    return { allowed: true, remaining: Math.max(0, max - 1), retryAfterSeconds: 0 };
+  }
+
+  const start = toInt(row.window_start);
+  const count = toInt(row.count);
+  if (now - start >= windowMs) {
+    await env.DB.prepare(
+      "UPDATE rate_limits SET count = 1, window_start = ?1 WHERE key = ?2"
+    )
+      .bind(now, key)
+      .run();
+    return { allowed: true, remaining: Math.max(0, max - 1), retryAfterSeconds: 0 };
+  }
+
+  if (count >= max) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - start)) / 1000));
+    return { allowed: false, remaining: 0, retryAfterSeconds };
+  }
+
+  await env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE key = ?1")
+    .bind(key)
+    .run();
+  return { allowed: true, remaining: Math.max(0, max - (count + 1)), retryAfterSeconds: 0 };
 }
 
 function unauthorized() {
@@ -720,6 +1041,7 @@ async function downloadModelToR2(env, remoteUrl, extension) {
 }
 
 async function handleApi(request, env, url) {
+  await ensureRuntimeSchema(env);
   const { pathname } = url;
   const method = request.method.toUpperCase();
   const config = getConfig(env);
@@ -753,7 +1075,7 @@ async function handleApi(request, env, url) {
     )
       .bind(restaurant.id)
       .all();
-    return json({ restaurant, items: (results || []).map(mapItemRow) });
+    return json({ restaurant, items: (results || []).map(mapItemRow).map(toPublicItem) });
   }
 
   const publicItem = method === "GET" && matchRoute("/api/public/item/:id", pathname);
@@ -761,13 +1083,75 @@ async function handleApi(request, env, url) {
     const item = await getItemById(env, publicItem.id);
     if (!item) return json({ error: "item_not_found" }, 404);
     const restaurant = await getRestaurantById(env, item.restaurantId);
-    return json({ item, restaurant });
+    return json({ item: toPublicItem(item), restaurant });
+  }
+
+  if (method === "POST" && pathname === "/api/public/events") {
+    const ip = getClientIp(request);
+    const eventRate = await consumeRateLimit(
+      env,
+      `events:${ip}`,
+      config.eventMaxPerWindow,
+      config.eventWindowMs
+    );
+    if (!eventRate.allowed) {
+      return json(
+        { error: "too_many_events", retryAfterSeconds: eventRate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(eventRate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    let restaurantId = sanitizeText(body.restaurantId, 80);
+    if (!restaurantId && restaurantSlug) {
+      const restaurant = await getRestaurantBySlug(env, restaurantSlug);
+      if (restaurant) restaurantId = restaurant.id;
+    }
+    if (!restaurantId) return json({ error: "restaurant_required" }, 400);
+
+    const itemId = sanitizeText(body.itemId, 80);
+    if (itemId) {
+      const item = await getItemById(env, itemId);
+      if (!item || item.restaurantId !== restaurantId) {
+        return json({ error: "item_invalid" }, 400);
+      }
+    }
+
+    const eventType = sanitizeEventType(body.type || body.eventType || "");
+    if (!eventType) return json({ error: "event_invalid" }, 400);
+
+    const result = await recordPublicEvent(env, request, {
+      restaurantId,
+      itemId,
+      eventType,
+      table: body.table || body.tableLabel || "",
+      meta: body.meta || {}
+    });
+    if (!result.ok) return json({ error: result.error || "event_invalid" }, 400);
+    return json({ ok: true });
   }
 
   if (method === "POST" && pathname === "/api/public/orders") {
+    const ip = getClientIp(request);
+    const orderRate = await consumeRateLimit(
+      env,
+      `orders:${ip}`,
+      config.orderMaxPerWindow,
+      config.orderWindowMs
+    );
+    if (!orderRate.allowed) {
+      return json(
+        { error: "too_many_orders", retryAfterSeconds: orderRate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(orderRate.retryAfterSeconds) }
+      );
+    }
+
     const body = await parseJsonBody(request);
-    const restaurantSlug = (body.restaurantSlug || "").toString().trim();
-    const table = (body.table || "").toString().trim();
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    const table = sanitizeTableLabel(body.table || "");
     const items = Array.isArray(body.items) ? body.items : [];
     if (!restaurantSlug) return json({ error: "restaurant_required" }, 400);
     if (!table) return json({ error: "table_required" }, 400);
@@ -781,7 +1165,7 @@ async function handleApi(request, env, url) {
     const map = new Map((results || []).map((row) => [row.id, mapItemRow(row)]));
     const orderItems = [];
     let total = 0;
-    for (const entry of items) {
+    for (const entry of items.slice(0, 30)) {
       const menuItem = map.get(entry.id);
       if (!menuItem) continue;
       const qty = Math.max(1, Math.min(50, Number(entry.qty) || 1));
@@ -813,6 +1197,17 @@ async function handleApi(request, env, url) {
         order.createdAt
       )
       .run();
+
+    await recordPublicEvent(env, request, {
+      restaurantId: restaurant.id,
+      eventType: "order_submit",
+      table,
+      meta: {
+        orderId: order.id,
+        items: orderItems.length,
+        total: order.total
+      }
+    });
     return json({ order });
   }
 
@@ -828,6 +1223,10 @@ async function handleApi(request, env, url) {
     }
 
     if (!email || !password) {
+      await registerLoginFailure(env, ip, config);
+      return json({ error: "invalid_credentials" }, 401);
+    }
+    if (!EMAIL_PATTERN.test(email) || password.length > 128) {
       await registerLoginFailure(env, ip, config);
       return json({ error: "invalid_credentials" }, 401);
     }
@@ -854,8 +1253,14 @@ async function handleApi(request, env, url) {
 
     if (!user.password_hash) {
       const newHash = await hashPassword(password);
-      await env.DB.prepare("UPDATE users SET password_hash = ?1 WHERE id = ?2").bind(newHash, user.id).run();
+      await env.DB.prepare("UPDATE users SET password_hash = ?1, password_plain = '' WHERE id = ?2")
+        .bind(newHash, user.id)
+        .run();
       user.password_hash = newHash;
+      user.password_plain = "";
+    } else if (user.password_plain) {
+      await env.DB.prepare("UPDATE users SET password_plain = '' WHERE id = ?1").bind(user.id).run();
+      user.password_plain = "";
     }
 
     const token = crypto.randomUUID();
@@ -902,19 +1307,20 @@ async function handleApi(request, env, url) {
   if (method === "POST" && pathname === "/api/restaurants") {
     if (currentUser.role !== "master") return forbidden();
     const body = await parseJsonBody(request);
-    if (!body.name) return json({ error: "name_required" }, 400);
-    const slug = normalizeSlug(body.slug || body.name);
+    const name = sanitizeText(body.name, 120);
+    if (!name) return json({ error: "name_required" }, 400);
+    const slug = normalizeSlug(body.slug || name);
     if (!slug) return json({ error: "slug_invalid" }, 400);
     const existing = await env.DB.prepare("SELECT id FROM restaurants WHERE slug = ?1").bind(slug).first();
     if (existing) return json({ error: "slug_in_use" }, 400);
     const restaurant = {
       id: `r-${crypto.randomUUID()}`,
-      name: body.name.toString(),
+      name,
       slug,
-      description: (body.description || "").toString(),
-      logo: (body.logo || "").toString(),
-      accent: (body.accent || DEFAULT_ACCENT).toString(),
-      template: (body.template || "default").toString(),
+      description: sanitizeText(body.description, 500),
+      logo: sanitizeNullableUrl(body.logo),
+      accent: sanitizeText(body.accent || DEFAULT_ACCENT, 16) || DEFAULT_ACCENT,
+      template: sanitizeText(body.template || "default", 60) || "default",
       heroImages: []
     };
     await env.DB.prepare(
@@ -955,13 +1361,16 @@ async function handleApi(request, env, url) {
 
     const body = await parseJsonBody(request);
     const next = { ...restaurant };
-    if (body.name) next.name = body.name.toString();
-    if (body.description !== undefined) next.description = (body.description || "").toString();
-    if (body.logo !== undefined) next.logo = (body.logo || "").toString();
-    if (body.accent) next.theme.accent = body.accent.toString();
-    if (body.template !== undefined) next.template = (body.template || "default").toString();
+    if (body.name !== undefined) next.name = sanitizeText(body.name, 120) || next.name;
+    if (body.description !== undefined) next.description = sanitizeText(body.description, 500);
+    if (body.logo !== undefined) next.logo = sanitizeNullableUrl(body.logo);
+    if (body.accent !== undefined) next.theme.accent = sanitizeText(body.accent, 16) || DEFAULT_ACCENT;
+    if (body.template !== undefined) next.template = sanitizeText(body.template || "default", 60) || "default";
     if (body.heroImages !== undefined && Array.isArray(body.heroImages)) {
-      next.heroImages = body.heroImages.filter(Boolean);
+      next.heroImages = body.heroImages
+        .map((value) => sanitizeNullableUrl(value))
+        .filter(Boolean)
+        .slice(0, 8);
     }
     if (body.slug) {
       const normalized = normalizeSlug(body.slug);
@@ -1049,17 +1458,18 @@ async function handleApi(request, env, url) {
     if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
     if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
     const body = await parseJsonBody(request);
-    if (!body.name) return json({ error: "name_required" }, 400);
+    const itemName = sanitizeText(body.name, 160);
+    if (!itemName) return json({ error: "name_required" }, 400);
     const item = {
       id: `i-${crypto.randomUUID()}`,
       restaurantId: restaurant.id,
-      name: body.name.toString(),
-      description: (body.description || "").toString(),
-      price: Number(body.price) || 0,
-      image: (body.image || "").toString(),
-      modelGlb: (body.modelGlb || "").toString(),
-      modelUsdz: (body.modelUsdz || "").toString(),
-      category: (body.category || "").toString(),
+      name: itemName,
+      description: sanitizeText(body.description, 800),
+      price: sanitizePrice(body.price),
+      image: sanitizeNullableUrl(body.image),
+      modelGlb: sanitizeNullableUrl(body.modelGlb),
+      modelUsdz: sanitizeNullableUrl(body.modelUsdz),
+      category: sanitizeText(body.category, 80),
       scans: []
     };
     await env.DB.prepare(
@@ -1090,13 +1500,17 @@ async function handleApi(request, env, url) {
     if (!canAccessRestaurant(currentUser, item.restaurantId)) return forbidden();
     const body = await parseJsonBody(request);
     const next = { ...item };
-    if (body.name) next.name = body.name.toString();
-    if (body.description !== undefined) next.description = (body.description || "").toString();
-    if (body.price !== undefined) next.price = Number(body.price) || 0;
-    if (body.image !== undefined) next.image = (body.image || "").toString();
-    if (body.modelGlb !== undefined) next.modelGlb = (body.modelGlb || "").toString();
-    if (body.modelUsdz !== undefined) next.modelUsdz = (body.modelUsdz || "").toString();
-    if (body.category !== undefined) next.category = (body.category || "").toString();
+    if (body.name !== undefined) {
+      const sanitizedName = sanitizeText(body.name, 160);
+      if (!sanitizedName) return json({ error: "name_required" }, 400);
+      next.name = sanitizedName;
+    }
+    if (body.description !== undefined) next.description = sanitizeText(body.description, 800);
+    if (body.price !== undefined) next.price = sanitizePrice(body.price);
+    if (body.image !== undefined) next.image = sanitizeNullableUrl(body.image);
+    if (body.modelGlb !== undefined) next.modelGlb = sanitizeNullableUrl(body.modelGlb);
+    if (body.modelUsdz !== undefined) next.modelUsdz = sanitizeNullableUrl(body.modelUsdz);
+    if (body.category !== undefined) next.category = sanitizeText(body.category, 80);
     await env.DB.prepare(
       `UPDATE items
        SET name = ?1, description = ?2, price = ?3, image = ?4, model_glb = ?5, model_usdz = ?6, category = ?7, scans_json = ?8
@@ -1190,6 +1604,122 @@ async function handleApi(request, env, url) {
     return json({ url: urlValue, count: scans.length });
   }
 
+  const analyticsRoute = method === "GET" && matchRoute("/api/restaurants/:id/analytics", pathname);
+  if (analyticsRoute) {
+    const restaurant = await getRestaurantById(env, analyticsRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+
+    const daysParam = Math.max(1, Math.min(90, toInt(url.searchParams.get("days"), 30)));
+    const sinceMs = Date.now() - daysParam * 24 * 60 * 60 * 1000;
+    const sinceIso = new Date(sinceMs).toISOString();
+
+    const orderSummary = await env.DB.prepare(
+      `SELECT
+        COUNT(*) AS orders_total,
+        COALESCE(SUM(total), 0) AS revenue_total,
+        COALESCE(AVG(total), 0) AS avg_ticket
+       FROM orders
+       WHERE restaurant_id = ?1 AND created_at >= ?2`
+    )
+      .bind(restaurant.id, sinceIso)
+      .first();
+
+    const eventRows = await env.DB.prepare(
+      `SELECT event_type, COUNT(*) AS total
+       FROM events
+       WHERE restaurant_id = ?1 AND created_at >= ?2
+       GROUP BY event_type`
+    )
+      .bind(restaurant.id, sinceIso)
+      .all();
+    const events = Object.create(null);
+    for (const row of eventRows.results || []) {
+      events[row.event_type] = toInt(row.total, 0);
+    }
+
+    const arRows = await env.DB.prepare(
+      `SELECT item_id, COUNT(*) AS total
+       FROM events
+       WHERE restaurant_id = ?1 AND created_at >= ?2 AND event_type = 'ar_open' AND item_id IS NOT NULL
+       GROUP BY item_id
+       ORDER BY total DESC
+       LIMIT 10`
+    )
+      .bind(restaurant.id, sinceIso)
+      .all();
+
+    const ordersRows = await env.DB.prepare(
+      "SELECT items_json FROM orders WHERE restaurant_id = ?1 AND created_at >= ?2"
+    )
+      .bind(restaurant.id, sinceIso)
+      .all();
+
+    const orderedCounter = new Map();
+    for (const row of ordersRows.results || []) {
+      const parsed = parseJsonSafe(row.items_json, []);
+      for (const entry of parsed) {
+        if (!entry || !entry.id) continue;
+        const qty = Math.max(1, Math.min(99, toInt(entry.qty, 1)));
+        const current = orderedCounter.get(entry.id) || 0;
+        orderedCounter.set(entry.id, current + qty);
+      }
+    }
+
+    const { results: itemRows } = await env.DB.prepare(
+      "SELECT id, name FROM items WHERE restaurant_id = ?1"
+    )
+      .bind(restaurant.id)
+      .all();
+    const itemNameMap = new Map((itemRows || []).map((row) => [row.id, row.name]));
+
+    const topOrderedItems = [...orderedCounter.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([itemId, qty]) => ({
+        itemId,
+        itemName: itemNameMap.get(itemId) || "Item",
+        qty
+      }));
+
+    const topArItems = (arRows.results || []).map((row) => ({
+      itemId: row.item_id,
+      itemName: itemNameMap.get(row.item_id) || "Item",
+      opens: toInt(row.total, 0)
+    }));
+
+    const menuViews = toInt(events.menu_view, 0);
+    const arOpens = toInt(events.ar_open, 0);
+    const orderSubmitEvents = toInt(events.order_submit, 0);
+    const ordersTotal = toInt(orderSummary.orders_total, 0);
+
+    const conversion = {
+      menuToAr: menuViews > 0 ? Number(((arOpens / menuViews) * 100).toFixed(2)) : 0,
+      arToOrder: arOpens > 0 ? Number(((ordersTotal / arOpens) * 100).toFixed(2)) : 0,
+      menuToOrder: menuViews > 0 ? Number(((ordersTotal / menuViews) * 100).toFixed(2)) : 0
+    };
+
+    return json({
+      analytics: {
+        windowDays: daysParam,
+        since: sinceIso,
+        summary: {
+          ordersTotal,
+          revenueTotal: Number(orderSummary?.revenue_total || 0),
+          avgTicket: Number(orderSummary?.avg_ticket || 0),
+          menuViews,
+          arOpens,
+          addToCart: toInt(events.add_to_cart, 0),
+          itemViews: toInt(events.item_view, 0),
+          orderSubmitEvents
+        },
+        conversion,
+        topArItems,
+        topOrderedItems
+      }
+    });
+  }
+
   const listOrdersRoute = method === "GET" && matchRoute("/api/restaurants/:id/orders", pathname);
   if (listOrdersRoute) {
     const restaurant = await getRestaurantById(env, listOrdersRoute.id);
@@ -1254,16 +1784,20 @@ async function handleApi(request, env, url) {
       itemId: item.id,
       sourceType,
       provider: providerId,
-      aiModel: (body.aiModel || "").toString().trim(),
+      aiModel: sanitizeText(body.aiModel, 60),
       autoMode: Boolean(body.autoMode),
       status: "enviado",
-      notes: (body.notes || "").toString().slice(0, 500),
+      notes: sanitizeText(body.notes, 500),
       modelGlb: "",
       modelUsdz: "",
       referenceImages: [],
       providerTaskId: "",
       providerTaskEndpoint: "",
       providerStatus: "",
+      qaScore: 0,
+      qaBand: "fraca",
+      qaChecklist: [],
+      qaNotes: "",
       createdAt: nowIso,
       updatedAt: nowIso,
       createdBy: currentUser.id
@@ -1271,8 +1805,9 @@ async function handleApi(request, env, url) {
     await env.DB.prepare(
       `INSERT INTO model_jobs
       (id, restaurant_id, item_id, source_type, provider, ai_model, auto_mode, status, notes, model_glb, model_usdz,
-       reference_images_json, provider_task_id, provider_task_endpoint, provider_status, created_at, updated_at, created_by)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)`
+       reference_images_json, provider_task_id, provider_task_endpoint, provider_status, qa_score, qa_band, qa_checklist_json,
+       qa_notes, created_at, updated_at, created_by)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)`
     )
       .bind(
         job.id,
@@ -1290,6 +1825,10 @@ async function handleApi(request, env, url) {
         job.providerTaskId,
         job.providerTaskEndpoint,
         job.providerStatus,
+        job.qaScore,
+        job.qaBand,
+        JSON.stringify(job.qaChecklist),
+        job.qaNotes,
         job.createdAt,
         job.updatedAt,
         job.createdBy
@@ -1338,28 +1877,59 @@ async function handleApi(request, env, url) {
     if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
     const body = await parseJsonBody(request);
     const allowedStatus = new Set(["enviado", "triagem", "processando", "revisao", "publicado", "erro"]);
+    let requestedStatus = null;
 
     if (body.status !== undefined) {
       const status = (body.status || "").toString().toLowerCase();
       if (!allowedStatus.has(status)) return json({ error: "status_invalid" }, 400);
-      job.status = status;
+      requestedStatus = status;
     }
-    if (body.notes !== undefined) job.notes = (body.notes || "").toString().slice(0, 500);
-    if (body.modelGlb !== undefined) job.modelGlb = (body.modelGlb || "").toString().trim();
-    if (body.modelUsdz !== undefined) job.modelUsdz = (body.modelUsdz || "").toString().trim();
+    if (body.notes !== undefined) job.notes = sanitizeText(body.notes, 500);
+    if (body.modelGlb !== undefined) job.modelGlb = sanitizeNullableUrl(body.modelGlb);
+    if (body.modelUsdz !== undefined) job.modelUsdz = sanitizeNullableUrl(body.modelUsdz);
     if (body.provider !== undefined) {
       const provider = (body.provider || "").toString().trim().toLowerCase();
       if (!getAiProvider(env, provider)) return json({ error: "provider_invalid" }, 400);
       job.provider = provider;
     }
-    if (body.aiModel !== undefined) job.aiModel = (body.aiModel || "").toString().trim();
+    if (body.aiModel !== undefined) job.aiModel = sanitizeText(body.aiModel, 60);
+    if (body.qaNotes !== undefined) job.qaNotes = sanitizeText(body.qaNotes, 1000);
+    if (Array.isArray(body.qaChecklist)) {
+      job.qaChecklist = body.qaChecklist
+        .map((entry) => sanitizeText(entry, 80))
+        .filter(Boolean)
+        .slice(0, 30);
+    }
+    if (body.qaScore !== undefined) {
+      job.qaScore = Math.max(0, Math.min(100, toInt(body.qaScore, 0)));
+      job.qaBand = toModelQualityBand(job.qaScore);
+    }
+    if (requestedStatus === "publicado") {
+      const qaScore = toInt(job.qaScore, 0);
+      const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+      if (qaScore < config.qaMinPublishScore || !hasRequiredModels) {
+        return json(
+          {
+            error: "publish_gate_failed",
+            requiredScore: config.qaMinPublishScore,
+            currentScore: qaScore,
+            hasRequiredModels
+          },
+          400
+        );
+      }
+    }
+    if (requestedStatus) {
+      job.status = requestedStatus;
+    }
     job.updatedAt = new Date().toISOString();
 
     await env.DB.prepare(
       `UPDATE model_jobs
        SET provider = ?1, ai_model = ?2, auto_mode = ?3, status = ?4, notes = ?5, model_glb = ?6, model_usdz = ?7,
-           reference_images_json = ?8, provider_task_id = ?9, provider_task_endpoint = ?10, provider_status = ?11, updated_at = ?12
-       WHERE id = ?13`
+           reference_images_json = ?8, provider_task_id = ?9, provider_task_endpoint = ?10, provider_status = ?11,
+           qa_score = ?12, qa_band = ?13, qa_checklist_json = ?14, qa_notes = ?15, updated_at = ?16
+       WHERE id = ?17`
     )
       .bind(
         job.provider,
@@ -1373,6 +1943,10 @@ async function handleApi(request, env, url) {
         job.providerTaskId || "",
         job.providerTaskEndpoint || "",
         job.providerStatus || "",
+        toInt(job.qaScore, 0),
+        (job.qaBand || "fraca").toString(),
+        JSON.stringify(job.qaChecklist || []),
+        job.qaNotes || "",
         job.updatedAt,
         job.id
       )
@@ -1401,8 +1975,110 @@ async function handleApi(request, env, url) {
     return json({ ok: true, removedJobId: job.id });
   }
 
+  const evaluateQaRoute = method === "POST" && matchRoute("/api/model-jobs/:id/qa/evaluate", pathname);
+  if (evaluateQaRoute) {
+    const job = await getModelJobById(env, evaluateQaRoute.id);
+    if (!job) return json({ error: "job_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
+    const item = await getItemById(env, job.itemId);
+    if (!item) return json({ error: "item_not_found" }, 400);
+    const body = await parseJsonBody(request);
+
+    const evaluation = await evaluateJobQuality(env, item, job);
+    const extraChecks = Array.isArray(body.extraChecklist)
+      ? body.extraChecklist.map((entry) => sanitizeText(entry, 80)).filter(Boolean).slice(0, 20)
+      : [];
+
+    job.qaScore = evaluation.score;
+    job.qaBand = evaluation.band;
+    job.qaChecklist = [...evaluation.checklist, ...extraChecks];
+    job.qaNotes = body.qaNotes !== undefined ? sanitizeText(body.qaNotes, 1000) : job.qaNotes || "";
+    job.updatedAt = new Date().toISOString();
+
+    await env.DB.prepare(
+      "UPDATE model_jobs SET qa_score = ?1, qa_band = ?2, qa_checklist_json = ?3, qa_notes = ?4, updated_at = ?5 WHERE id = ?6"
+    )
+      .bind(
+        toInt(job.qaScore, 0),
+        job.qaBand || "fraca",
+        JSON.stringify(job.qaChecklist || []),
+        job.qaNotes || "",
+        job.updatedAt,
+        job.id
+      )
+      .run();
+
+    return json({ job, evaluation });
+  }
+
+  const publishJobRoute = method === "POST" && matchRoute("/api/model-jobs/:id/publish", pathname);
+  if (publishJobRoute) {
+    const job = await getModelJobById(env, publishJobRoute.id);
+    if (!job) return json({ error: "job_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
+    const item = await getItemById(env, job.itemId);
+    if (!item) return json({ error: "item_not_found" }, 400);
+
+    const evaluation = await evaluateJobQuality(env, item, job);
+    const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+    if (!hasRequiredModels || evaluation.score < config.qaMinPublishScore) {
+      await env.DB.prepare(
+        "UPDATE model_jobs SET qa_score = ?1, qa_band = ?2, qa_checklist_json = ?3, status = 'revisao', updated_at = ?4 WHERE id = ?5"
+      )
+        .bind(
+          evaluation.score,
+          evaluation.band,
+          JSON.stringify(evaluation.checklist),
+          new Date().toISOString(),
+          job.id
+        )
+        .run();
+      return json(
+        {
+          error: "publish_gate_failed",
+          requiredScore: config.qaMinPublishScore,
+          currentScore: evaluation.score,
+          hasRequiredModels,
+          checklist: evaluation.checklist
+        },
+        400
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    await env.DB.prepare(
+      "UPDATE model_jobs SET status = 'publicado', qa_score = ?1, qa_band = ?2, qa_checklist_json = ?3, updated_at = ?4 WHERE id = ?5"
+    )
+      .bind(evaluation.score, evaluation.band, JSON.stringify(evaluation.checklist), nowIso, job.id)
+      .run();
+
+    await env.DB.prepare("UPDATE items SET model_glb = ?1, model_usdz = ?2 WHERE id = ?3")
+      .bind(job.modelGlb || item.modelGlb || "", job.modelUsdz || item.modelUsdz || "", item.id)
+      .run();
+
+    return json({
+      ok: true,
+      status: "publicado",
+      qaScore: evaluation.score,
+      qaBand: evaluation.band
+    });
+  }
+
   const startAiRoute = method === "POST" && matchRoute("/api/model-jobs/:id/ai/start", pathname);
   if (startAiRoute) {
+    const aiLimit = await consumeRateLimit(
+      env,
+      `ai:start:${currentUser.id}`,
+      config.aiActionMaxPerWindow,
+      config.aiActionWindowMs
+    );
+    if (!aiLimit.allowed) {
+      return json(
+        { error: "ai_rate_limited", retryAfterSeconds: aiLimit.retryAfterSeconds },
+        429,
+        { "Retry-After": String(aiLimit.retryAfterSeconds) }
+      );
+    }
     const job = await getModelJobById(env, startAiRoute.id);
     if (!job) return json({ error: "job_not_found" }, 404);
     if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
@@ -1410,7 +2086,7 @@ async function handleApi(request, env, url) {
     if (!item) return json({ error: "item_not_found" }, 400);
 
     const body = await parseJsonBody(request);
-    const providerId = (body.provider || job.provider || "manual").toString().trim().toLowerCase();
+    const providerId = sanitizeText(body.provider || job.provider || "manual", 32).toLowerCase();
     const provider = getAiProvider(env, providerId);
     if (!provider) return json({ error: "provider_invalid" }, 400);
     if (!provider.enabled) return json({ error: "provider_not_configured" }, 400);
@@ -1419,7 +2095,7 @@ async function handleApi(request, env, url) {
     try {
       const imageInputs = await buildJobImageInputs(env, item, job);
       if (!imageInputs.length) return json({ error: "image_source_not_found" }, 400);
-      const aiModel = (body.aiModel || job.aiModel || getConfig(env).meshyModel).toString().trim();
+      const aiModel = sanitizeText(body.aiModel || job.aiModel || getConfig(env).meshyModel, 60);
       const startResult = await startMeshyImageTo3D(env, imageInputs, {
         aiModel,
         targetPolycount: body.targetPolycount
@@ -1431,13 +2107,18 @@ async function handleApi(request, env, url) {
       job.providerTaskEndpoint = startResult.endpoint || "";
       job.providerStatus = "SUBMITTED";
       job.status = "processando";
+      job.qaScore = 0;
+      job.qaBand = "fraca";
+      job.qaChecklist = [];
+      job.qaNotes = "";
       job.updatedAt = new Date().toISOString();
 
       await env.DB.prepare(
         `UPDATE model_jobs
          SET provider = ?1, ai_model = ?2, provider_task_id = ?3, provider_task_endpoint = ?4,
-             provider_status = ?5, status = ?6, updated_at = ?7
-         WHERE id = ?8`
+             provider_status = ?5, status = ?6, qa_score = ?7, qa_band = ?8, qa_checklist_json = ?9, qa_notes = ?10,
+             updated_at = ?11
+         WHERE id = ?12`
       )
         .bind(
           job.provider,
@@ -1446,6 +2127,10 @@ async function handleApi(request, env, url) {
           job.providerTaskEndpoint,
           job.providerStatus,
           job.status,
+          job.qaScore,
+          job.qaBand,
+          JSON.stringify(job.qaChecklist),
+          job.qaNotes,
           job.updatedAt,
           job.id
         )
@@ -1473,6 +2158,19 @@ async function handleApi(request, env, url) {
 
   const syncAiRoute = method === "POST" && matchRoute("/api/model-jobs/:id/ai/sync", pathname);
   if (syncAiRoute) {
+    const aiLimit = await consumeRateLimit(
+      env,
+      `ai:sync:${currentUser.id}`,
+      config.aiActionMaxPerWindow,
+      config.aiActionWindowMs
+    );
+    if (!aiLimit.allowed) {
+      return json(
+        { error: "ai_rate_limited", retryAfterSeconds: aiLimit.retryAfterSeconds },
+        429,
+        { "Retry-After": String(aiLimit.retryAfterSeconds) }
+      );
+    }
     const job = await getModelJobById(env, syncAiRoute.id);
     if (!job) return json({ error: "job_not_found" }, 404);
     if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
@@ -1497,15 +2195,26 @@ async function handleApi(request, env, url) {
           job.modelUsdz = await downloadModelToR2(env, modelUrls.usdz, ".usdz");
         }
         if (job.autoMode && body.autoPublish === true) {
-          job.status = "publicado";
+          const item = await getItemById(env, job.itemId);
+          if (item) {
+            const evaluation = await evaluateJobQuality(env, item, job);
+            job.qaScore = evaluation.score;
+            job.qaBand = evaluation.band;
+            job.qaChecklist = evaluation.checklist;
+            const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+            if (evaluation.score >= config.qaMinPublishScore && hasRequiredModels) {
+              job.status = "publicado";
+            }
+          }
         }
       }
 
       job.updatedAt = new Date().toISOString();
       await env.DB.prepare(
         `UPDATE model_jobs
-         SET status = ?1, model_glb = ?2, model_usdz = ?3, provider_task_endpoint = ?4, provider_status = ?5, updated_at = ?6
-         WHERE id = ?7`
+         SET status = ?1, model_glb = ?2, model_usdz = ?3, provider_task_endpoint = ?4, provider_status = ?5,
+             qa_score = ?6, qa_band = ?7, qa_checklist_json = ?8, updated_at = ?9
+         WHERE id = ?10`
       )
         .bind(
           job.status,
@@ -1513,6 +2222,9 @@ async function handleApi(request, env, url) {
           job.modelUsdz || "",
           job.providerTaskEndpoint || "",
           job.providerStatus || "",
+          toInt(job.qaScore, 0),
+          (job.qaBand || "fraca").toString(),
+          JSON.stringify(job.qaChecklist || []),
           job.updatedAt,
           job.id
         )

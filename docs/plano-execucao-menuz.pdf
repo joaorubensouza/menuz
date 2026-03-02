@@ -1,0 +1,219 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [ 3 0 R 5 0 R ] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2337 >>
+stream
+BT
+/F1 11 Tf
+50 800 Td
+(Plano de Execucao - Menuz AR \(Restaurantes\)) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Data: 02/03/2026) Tj
+0 -16 Td
+(Responsavel: Joao Rubens / Menuz) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(1\) Objetivo) Tj
+0 -16 Td
+(- Vender cardapio com AR para restaurantes, sem app obrigatorio para cliente final.) Tj
+0 -16 Td
+(- Garantir qualidade visual \(3D realista\), estabilidade 24h e operacao repetivel.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(2\) Status tecnico atual) Tj
+0 -16 Td
+(- Backend cloud-native em Cloudflare Worker + D1 + R2.) Tj
+0 -16 Td
+(- Site publico e painel admin operando no mesmo dominio.) Tj
+0 -16 Td
+(- Fila 3D com Meshy integrada \(criar job, enviar fotos, iniciar IA, sincronizar\).) Tj
+0 -16 Td
+(- Gate de publicacao ativo: exige GLB + USDZ + score QA minimo.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(3\) Seguranca aplicada) Tj
+0 -16 Td
+(- Limitador de tentativas de login por IP.) Tj
+0 -16 Td
+(- Rate limit para pedidos publicos.) Tj
+0 -16 Td
+(- Rate limit para acao de IA \(start/sync\).) Tj
+0 -16 Td
+(- Headers de seguranca \(CSP, HSTS, frame deny, no sniff, etc.\).) Tj
+0 -16 Td
+(- Sanitizacao de campos \(itens, restaurantes, pedidos e URLs\).) Tj
+0 -16 Td
+(- Limpeza de senha em texto claro apos login bem-sucedido.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(4\) Fluxo operacional recomendado \(padrao\)) Tj
+0 -16 Td
+(1. Cliente fotografa prato \(8-16 fotos no painel ou via scanner\).) Tj
+0 -16 Td
+(2. Job entra na Fila 3D com provider Meshy.) Tj
+0 -16 Td
+(3. Operador clica `Rodar IA` e depois `Sincronizar`.) Tj
+0 -16 Td
+(4. Operador revisa GLB/USDZ.) Tj
+0 -16 Td
+(5. Operador clica `Avaliar QA`.) Tj
+0 -16 Td
+(6. Se score >= 70 e GLB+USDZ validos -> `Publicar`.) Tj
+0 -16 Td
+(7. Prato fica ativo no cardapio e em AR.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(5\) Padrao de captura de fotos \(comida\)) Tj
+0 -16 Td
+(- Fundo simples e sem reflexo forte.) Tj
+0 -16 Td
+(- Luz difusa \(evitar flash estourado\).) Tj
+0 -16 Td
+(- Fazer volta de 180-270 graus no prato.) Tj
+0 -16 Td
+(- Distancias: perto, medio e geral.) Tj
+0 -16 Td
+(- Nao cortar bordas do prato em todas as fotos.) Tj
+0 -16 Td
+(- Evitar objetos extras \(talheres, copo, mao\) na frente.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(6\) SLA interno por prato) Tj
+0 -16 Td
+(- Recebimento e triagem: ate 15 minutos.) Tj
+0 -16 Td
+(- Geracao IA + sync: 10-25 minutos.) Tj
+0 -16 Td
+(- Revisao e QA: 10 minutos.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 2429 >>
+stream
+BT
+/F1 11 Tf
+50 800 Td
+(- Publicacao final: ate 1 hora \(modelo padrao\).) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(7\) Precos sugeridos \(SaaS\)) Tj
+0 -16 Td
+(- Plano Start: EUR 99/mes, ate 25 itens, ate 20 jobs 3D/mes.) Tj
+0 -16 Td
+(- Plano Growth: EUR 199/mes, ate 80 itens, ate 60 jobs 3D/mes.) Tj
+0 -16 Td
+(- Plano Premium: EUR 399/mes, multi-unidade, fila prioritaria, suporte dedicado.) Tj
+0 -16 Td
+(- Setup inicial opcional: EUR 300-EUR 900 por restaurante \(onboarding + treinamento\).) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(8\) Como fechar os primeiros 10 restaurantes) Tj
+0 -16 Td
+(1. Prospeccao local \(BH + regiao\): lista de 50 alvos com ticket medio alto.) Tj
+0 -16 Td
+(2. Oferta de piloto 14 dias para 1-3 pratos.) Tj
+0 -16 Td
+(3. Demonstracao presencial: QR na mesa + comparativo com/sem AR.) Tj
+0 -16 Td
+(4. Fechamento com contrato mensal + setup.) Tj
+0 -16 Td
+(5. Coletar depoimento e video curto do dono para prova social.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(9\) KPIs obrigatorios \(monitoramento semanal\)) Tj
+0 -16 Td
+(- Taxa de abertura do QR por mesa.) Tj
+0 -16 Td
+(- Taxa de clique em `Realidade Aumentada`.) Tj
+0 -16 Td
+(- Conversao para pedido apos AR.) Tj
+0 -16 Td
+(- Tempo medio entre job criado e prato publicado.) Tj
+0 -16 Td
+(- Taxa de reprova QA.) Tj
+0 -16 Td
+(- Churn de restaurante.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(10\) Roadmap \(60 dias\)) Tj
+0 -16 Td
+(- Semana 1-2: padronizar onboarding e playbook comercial.) Tj
+0 -16 Td
+(- Semana 3-4: melhorar dashboard de KPI por restaurante.) Tj
+0 -16 Td
+(- Semana 5-6: automacao de notificacao \(job pronto/reprovado\).) Tj
+0 -16 Td
+(- Semana 7-8: fechar 10 contratos ativos e publicar estudo de caso.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(11\) Riscos e mitigacao) Tj
+0 -16 Td
+(- Risco: 3D inconsistente em comida complexa.) Tj
+0 -16 Td
+(  Mitigacao: fluxo hibrido \(captura melhor + QA + ajuste manual quando necessario\).) Tj
+0 -16 Td
+(- Risco: cliente sem disciplina de captura.) Tj
+0 -16 Td
+(  Mitigacao: checklist simples no app e treinamento de 20 minutos.) Tj
+0 -16 Td
+(- Risco: custo de IA subir.) Tj
+0 -16 Td
+(  Mitigacao: limites por plano e fila priorizada por receita.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(12\) Proximo passo imediato \(esta semana\)) Tj
+0 -16 Td
+(1. Validar 3 pratos reais no fluxo completo \(captura -> QA -> publicacao\).) Tj
+0 -16 Td
+(2. Montar proposta comercial PDF para piloto.) Tj
+0 -16 Td
+(3. Agendar 5 demos presenciais com restaurantes alvo.) Tj
+0 -16 Td
+() Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000123 00000 n 
+0000000249 00000 n 
+0000002638 00000 n 
+0000002764 00000 n 
+0000005245 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+5315
+%%EOF

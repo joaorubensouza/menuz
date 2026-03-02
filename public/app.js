@@ -39,6 +39,28 @@ let publicRestaurants = [];
 const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table";
 
+function trackPublicEvent(type, payload = {}) {
+  const body = JSON.stringify({
+    type,
+    restaurantSlug: slug || payload.restaurantSlug || "",
+    itemId: payload.itemId || "",
+    table: payload.table || "",
+    meta: payload.meta || {}
+  });
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: "application/json" });
+    navigator.sendBeacon("/api/public/events", blob);
+    return;
+  }
+
+  fetch("/api/public/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body
+  }).catch(() => {});
+}
+
 function applyTheme(theme) {
   const allowed = ["amber", "ocean", "wine"];
   const nextTheme = allowed.includes(theme) ? theme : "amber";
@@ -308,6 +330,7 @@ function addToCart(itemId) {
     cart.push({ id: itemId, qty: 1 });
   }
   saveCart();
+  trackPublicEvent("add_to_cart", { itemId });
 }
 
 function updateCartQty(itemId, delta) {
@@ -388,6 +411,7 @@ async function loadMenu(slugValue) {
 
   menuTitle.textContent = restaurant.name;
   menuSubtitle.textContent = `${menuItems.length} itens no cardapio`;
+  trackPublicEvent("menu_view", { restaurantSlug: restaurant.slug || slugValue });
 
   menuList.innerHTML = "";
   menuItems.forEach((item) => {
@@ -405,11 +429,14 @@ async function loadMenu(slugValue) {
       </div>
       <div class="row" style="margin-top: 10px;">
         <button class="btn btn-outline" data-add>Adicionar</button>
-        <a class="btn" href="/item.html?id=${item.id}">Ver em AR</a>
+        <a class="btn" data-ar-link href="/item.html?id=${item.id}">Ver em AR</a>
       </div>
     `;
     card.querySelector("[data-add]").addEventListener("click", () => {
       addToCart(item.id);
+    });
+    card.querySelector("[data-ar-link]").addEventListener("click", () => {
+      trackPublicEvent("item_view", { itemId: item.id });
     });
     menuList.appendChild(card);
   });

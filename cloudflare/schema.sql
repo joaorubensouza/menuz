@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS model_jobs (
   provider_task_id TEXT DEFAULT '',
   provider_task_endpoint TEXT DEFAULT '',
   provider_status TEXT DEFAULT '',
+  qa_score INTEGER DEFAULT 0,
+  qa_band TEXT DEFAULT 'fraca',
+  qa_checklist_json TEXT DEFAULT '[]',
+  qa_notes TEXT DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   created_by TEXT DEFAULT '',
@@ -83,9 +87,31 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   locked_until INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  restaurant_id TEXT NOT NULL,
+  item_id TEXT DEFAULT '',
+  event_type TEXT NOT NULL,
+  table_label TEXT DEFAULT '',
+  ip_hash TEXT DEFAULT '',
+  user_agent TEXT DEFAULT '',
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_restaurant ON items(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_restaurant ON model_jobs(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_item ON model_jobs(item_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_events_restaurant_created ON events(restaurant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
