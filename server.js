@@ -41,8 +41,22 @@ const MODELS_DIR = path.join(UPLOADS_DIR, "models");
 const SCANS_DIR = path.join(UPLOADS_DIR, "scans");
 const JOB_IMAGES_DIR = path.join(UPLOADS_DIR, "job-images");
 const MESHY_API_BASE = "https://api.meshy.ai/openapi/v1";
+const GOOGLE_TRANSLATE_API_BASE = "https://translation.googleapis.com/language/translate/v2";
 const MESHY_DEFAULT_MODEL = process.env.MESHY_AI_MODEL || "meshy-6";
 const MESHY_MAX_REFERENCE_IMAGES = Number(process.env.MESHY_MAX_REFERENCE_IMAGES || 4);
+const GOOGLE_TRANSLATE_LANGUAGE_MAP = {
+  "pt-BR": "pt",
+  "en-US": "en",
+  "es-ES": "es",
+  "fr-FR": "fr",
+  "it-IT": "it",
+  "de-DE": "de"
+};
+const TRANSLATE_WINDOW_MS = Number(process.env.TRANSLATE_WINDOW_MS || 60 * 1000);
+const TRANSLATE_MAX_PER_WINDOW = Number(process.env.TRANSLATE_MAX_PER_WINDOW || 20);
+const TRANSLATE_MAX_TEXTS = Number(process.env.TRANSLATE_MAX_TEXTS || 80);
+const TRANSLATE_MAX_CHARS_PER_TEXT = Number(process.env.TRANSLATE_MAX_CHARS_PER_TEXT || 300);
+const TRANSLATE_MAX_TOTAL_CHARS = Number(process.env.TRANSLATE_MAX_TOTAL_CHARS || 6000);
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 24 * 60 * 60 * 1000);
 const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS || 15 * 60 * 1000);
 const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS || 6);
@@ -50,6 +64,7 @@ const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000);
 
 const tokens = new Map();
 const loginAttempts = new Map();
+const translateRate = new Map();
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -210,6 +225,140 @@ function normalizeLanguageList(value, preferredDefault = DEFAULT_LANGUAGE_CODE) 
   const defaultCode = normalizeLanguageCode(preferredDefault);
   if (!unique.includes(defaultCode)) unique.unshift(defaultCode);
   return unique.slice(0, LANGUAGE_CODES.length);
+}
+
+function sanitizeText(value, max = 255) {
+  return (value || "").toString().trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function toGoogleLanguageCode(code, fallback = "pt") {
+  const normalized = normalizeLanguageCode(code);
+  return GOOGLE_TRANSLATE_LANGUAGE_MAP[normalized] || fallback;
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
+
+function consumeTranslateRateLimit(ip) {
+  const key = ip || "unknown";
+  const now = Date.now();
+  const current = translateRate.get(key);
+
+  if (!current || now - current.windowStart > TRANSLATE_WINDOW_MS) {
+    translateRate.set(key, { count: 1, windowStart: now });
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  if (current.count >= TRANSLATE_MAX_PER_WINDOW) {
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((TRANSLATE_WINDOW_MS - (now - current.windowStart)) / 1000)
+    );
+    return { allowed: false, retryAfterSeconds };
+  }
+
+  current.count += 1;
+  translateRate.set(key, current);
+  return { allowed: true, retryAfterSeconds: 0 };
+}
+
+function sanitizeTranslatePayload(body) {
+  const rawTexts = Array.isArray(body && body.texts) ? body.texts : [];
+  if (!rawTexts.length) return { ok: false, error: "texts_required" };
+  if (rawTexts.length > TRANSLATE_MAX_TEXTS) return { ok: false, error: "too_many_texts" };
+
+  const texts = [];
+  let totalChars = 0;
+  for (const rawText of rawTexts) {
+    const text = sanitizeText(rawText, TRANSLATE_MAX_CHARS_PER_TEXT);
+    texts.push(text);
+    totalChars += text.length;
+  }
+  if (totalChars > TRANSLATE_MAX_TOTAL_CHARS) return { ok: false, error: "texts_too_large" };
+
+  const targetLanguage = normalizeLanguageCode(body.targetLanguage || body.target || "");
+  const requestedSource = sanitizeText(body.sourceLanguage || body.source || "", 16);
+
+  return {
+    ok: true,
+    texts,
+    targetLanguage,
+    targetGoogleCode: toGoogleLanguageCode(targetLanguage, "pt"),
+    sourceLanguage: requestedSource ? toGoogleLanguageCode(requestedSource, "pt") : ""
+  };
+}
+
+async function requestGoogleTranslations(payload) {
+  const apiKey = sanitizeText(process.env.GOOGLE_TRANSLATE_API_KEY || "", 256);
+  if (!apiKey) {
+    return { ok: false, status: 503, error: "google_translate_not_configured" };
+  }
+
+  const nonEmpty = [];
+  const nonEmptyIndexes = [];
+  payload.texts.forEach((text, index) => {
+    if (!text) return;
+    nonEmpty.push(text);
+    nonEmptyIndexes.push(index);
+  });
+
+  const output = payload.texts.map(() => "");
+  if (!nonEmpty.length) return { ok: true, translations: output };
+
+  const reqBody = {
+    q: nonEmpty,
+    target: payload.targetGoogleCode,
+    format: "text"
+  };
+  if (payload.sourceLanguage) reqBody.source = payload.sourceLanguage;
+
+  let response;
+  try {
+    response = await fetch(`${GOOGLE_TRANSLATE_API_BASE}?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(reqBody)
+    });
+  } catch {
+    return { ok: false, status: 502, error: "translate_failed" };
+  }
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: 502,
+      error: "translate_failed",
+      detail: sanitizeText(data && data.error && data.error.message ? data.error.message : "", 220)
+    };
+  }
+
+  const translated = Array.isArray(data && data.data && data.data.translations)
+    ? data.data.translations
+    : [];
+  if (translated.length !== nonEmpty.length) {
+    return { ok: false, status: 502, error: "translate_failed" };
+  }
+
+  translated.forEach((entry, listIndex) => {
+    const originalIndex = nonEmptyIndexes[listIndex];
+    const maxLen = payload.texts[originalIndex].length + 120;
+    output[originalIndex] = sanitizeText(decodeHtmlEntities(entry.translatedText || ""), maxLen);
+  });
+
+  return { ok: true, translations: output };
 }
 
 function sanitizeContactEmail(value) {
@@ -768,6 +917,35 @@ app.get("/api/public/item/:id", async (req, res) => {
   }
   const restaurant = findRestaurant(db, item.restaurantId);
   res.json({ item, restaurant });
+});
+
+app.post("/api/public/translate", async (req, res) => {
+  const ip = getClientIp(req);
+  const rate = consumeTranslateRateLimit(ip);
+  if (!rate.allowed) {
+    res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: "too_many_translate_requests" });
+  }
+
+  const parsed = sanitizeTranslatePayload(req.body || {});
+  if (!parsed.ok) {
+    return res.status(400).json({ error: parsed.error });
+  }
+
+  const result = await requestGoogleTranslations(parsed);
+  if (!result.ok) {
+    const payload = { error: result.error };
+    if (result.detail && process.env.DEBUG_ERRORS === "1") {
+      payload.detail = result.detail;
+    }
+    return res.status(result.status || 502).json(payload);
+  }
+
+  res.json({
+    targetLanguage: parsed.targetLanguage,
+    sourceLanguage: parsed.sourceLanguage || "",
+    translations: result.translations
+  });
 });
 
 app.post("/api/login", async (req, res) => {

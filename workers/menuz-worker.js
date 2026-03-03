@@ -1,6 +1,15 @@
 import { scrypt } from "scrypt-js";
 
 const MESHY_API_BASE = "https://api.meshy.ai/openapi/v1";
+const GOOGLE_TRANSLATE_API_BASE = "https://translation.googleapis.com/language/translate/v2";
+const GOOGLE_TRANSLATE_LANGUAGE_MAP = {
+  "pt-BR": "pt",
+  "en-US": "en",
+  "es-ES": "es",
+  "fr-FR": "fr",
+  "it-IT": "it",
+  "de-DE": "de"
+};
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -473,6 +482,11 @@ function getConfig(env) {
     eventMaxPerWindow: toInt(env.PUBLIC_EVENT_MAX_PER_WINDOW, 200),
     aiActionWindowMs: toInt(env.AI_ACTION_WINDOW_MS, 60 * 1000),
     aiActionMaxPerWindow: toInt(env.AI_ACTION_MAX_PER_WINDOW, 12),
+    translateWindowMs: toInt(env.TRANSLATE_WINDOW_MS, 60 * 1000),
+    translateMaxPerWindow: toInt(env.TRANSLATE_MAX_PER_WINDOW, 20),
+    translateMaxTexts: Math.max(1, Math.min(100, toInt(env.TRANSLATE_MAX_TEXTS, 80))),
+    translateMaxCharsPerText: Math.max(1, Math.min(2000, toInt(env.TRANSLATE_MAX_CHARS_PER_TEXT, 300))),
+    translateMaxTotalChars: Math.max(1, Math.min(30000, toInt(env.TRANSLATE_MAX_TOTAL_CHARS, 6000))),
     qaMinPublishScore: toInt(env.QA_MIN_PUBLISH_SCORE, 70),
     meshyModel: (env.MESHY_AI_MODEL || "meshy-6").toString(),
     meshyMaxImages: Math.max(1, Math.min(8, toInt(env.MESHY_MAX_REFERENCE_IMAGES, 4)))
@@ -516,6 +530,123 @@ function sanitizeLanguageList(value, preferredDefault = DEFAULT_LANGUAGE_CODE) {
   }
 
   return ordered.slice(0, DEFAULT_LANGUAGE_OPTIONS.length);
+}
+
+function toGoogleLanguageCode(value, fallback = "pt") {
+  const normalized = sanitizeLanguageCode(value);
+  return GOOGLE_TRANSLATE_LANGUAGE_MAP[normalized] || fallback;
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
+
+function sanitizeTranslatePayload(body, config) {
+  const rawTexts = Array.isArray(body?.texts) ? body.texts : [];
+  if (!rawTexts.length) {
+    return { ok: false, error: "texts_required" };
+  }
+  if (rawTexts.length > config.translateMaxTexts) {
+    return { ok: false, error: "too_many_texts" };
+  }
+
+  const sanitized = [];
+  let totalChars = 0;
+  for (const value of rawTexts) {
+    const text = sanitizeText(value, config.translateMaxCharsPerText);
+    sanitized.push(text);
+    totalChars += text.length;
+  }
+
+  if (totalChars > config.translateMaxTotalChars) {
+    return { ok: false, error: "texts_too_large" };
+  }
+
+  const targetLanguage = sanitizeLanguageCode(body?.targetLanguage || body?.target || "");
+  const requestedSource = sanitizeText(body?.sourceLanguage || body?.source || "", 16);
+  const sourceLanguage = requestedSource
+    ? toGoogleLanguageCode(requestedSource, "pt")
+    : "";
+
+  return {
+    ok: true,
+    texts: sanitized,
+    targetLanguage,
+    targetGoogleCode: toGoogleLanguageCode(targetLanguage, "pt"),
+    sourceLanguage
+  };
+}
+
+async function requestGoogleTranslations(env, payload) {
+  const apiKey = sanitizeText(env.GOOGLE_TRANSLATE_API_KEY || "", 256);
+  if (!apiKey) {
+    return { ok: false, status: 503, error: "google_translate_not_configured" };
+  }
+
+  const nonEmpty = [];
+  const nonEmptyIndices = [];
+  payload.texts.forEach((text, index) => {
+    if (!text) return;
+    nonEmpty.push(text);
+    nonEmptyIndices.push(index);
+  });
+
+  const output = payload.texts.map(() => "");
+  if (!nonEmpty.length) {
+    return { ok: true, translations: output };
+  }
+
+  const requestBody = {
+    q: nonEmpty,
+    target: payload.targetGoogleCode,
+    format: "text"
+  };
+  if (payload.sourceLanguage) {
+    requestBody.source = payload.sourceLanguage;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${GOOGLE_TRANSLATE_API_BASE}?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify(requestBody)
+    });
+  } catch {
+    return { ok: false, status: 502, error: "translate_failed" };
+  }
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    const detail = sanitizeText(data?.error?.message || `translate_http_${response.status}`, 220);
+    return { ok: false, status: 502, error: "translate_failed", detail };
+  }
+
+  const translatedEntries = Array.isArray(data?.data?.translations) ? data.data.translations : [];
+  if (translatedEntries.length !== nonEmpty.length) {
+    return { ok: false, status: 502, error: "translate_failed" };
+  }
+
+  translatedEntries.forEach((entry, listIndex) => {
+    const safeText = sanitizeText(
+      decodeHtmlEntities(entry?.translatedText || ""),
+      payload.texts[nonEmptyIndices[listIndex]].length + 120
+    );
+    output[nonEmptyIndices[listIndex]] = safeText;
+  });
+
+  return { ok: true, translations: output };
 }
 
 function sanitizeContactEmail(value) {
@@ -1486,6 +1617,42 @@ async function handleApi(request, env, url) {
   const { pathname } = url;
   const method = request.method.toUpperCase();
   const config = getConfig(env);
+
+  if (method === "POST" && pathname === "/api/public/translate") {
+    const ip = getClientIp(request);
+    const rate = await consumeRateLimit(
+      env,
+      `translate:${ip}`,
+      config.translateMaxPerWindow,
+      config.translateWindowMs
+    );
+    if (!rate.allowed) {
+      return json(
+        { error: "too_many_translate_requests", retryAfterSeconds: rate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(rate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const parsed = sanitizeTranslatePayload(body, config);
+    if (!parsed.ok) return json({ error: parsed.error }, 400);
+
+    const result = await requestGoogleTranslations(env, parsed);
+    if (!result.ok) {
+      const payload = { error: result.error };
+      if (result.detail && (env.DEBUG_ERRORS || "").toString() === "1") {
+        payload.detail = result.detail;
+      }
+      return json(payload, result.status || 502);
+    }
+
+    return json({
+      targetLanguage: parsed.targetLanguage,
+      sourceLanguage: parsed.sourceLanguage || "",
+      translations: result.translations
+    });
+  }
 
   if (method === "GET" && pathname === "/api/public/restaurants") {
     const { results } = await env.DB.prepare(

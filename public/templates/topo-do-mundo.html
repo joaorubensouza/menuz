@@ -41,7 +41,13 @@
       <div class="title-row">
         <h1 id="restaurant-name">Carregando...</h1>
         <div class="title-tools">
-          <button class="icon-text" id="language-toggle" type="button">Aa</button>
+          <button class="lang-pill" id="language-toggle" type="button" aria-label="Trocar idioma">
+            <span class="lang-pill-icon" aria-hidden="true">&#127760;</span>
+            <span class="lang-pill-meta">
+              <span class="lang-pill-badge" id="language-badge">PT</span>
+              <span class="lang-pill-text" id="language-label">Trocar idioma</span>
+            </span>
+          </button>
           <button class="icon-text" id="share-toggle" type="button">&#8901;</button>
         </div>
       </div>
@@ -98,7 +104,7 @@
     <div class="side-overlay hidden" id="side-overlay"></div>
     <aside class="side-drawer" id="side-drawer" aria-hidden="true">
       <div class="drawer-head">
-        <span class="drawer-lang" id="drawer-lang">Português do Brasil</span>
+        <span class="drawer-lang" id="drawer-lang">Portugues do Brasil</span>
         <button class="close-btn" id="drawer-close" type="button">Fechar</button>
       </div>
       <div class="drawer-brand">

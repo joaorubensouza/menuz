@@ -5,6 +5,7 @@ const THEME_KEY = "menuz_theme";
 
 const modelViewer = document.getElementById("modelViewer");
 const arButton = document.getElementById("arButton");
+const iosQuickLookLink = document.getElementById("iosQuickLookLink");
 const arHint = document.getElementById("arHint");
 const arFallback = document.getElementById("arFallback");
 const backLink = document.getElementById("back-link");
@@ -17,6 +18,9 @@ const itemRestaurant = document.getElementById("item-restaurant");
 const slugParam = params.get("r");
 const tableParam = params.get("mesa");
 let arOpenTracked = false;
+const ua = navigator.userAgent || "";
+const isIOS = /iPhone|iPad|iPod/i.test(ua);
+const isAndroid = /Android/i.test(ua);
 
 function trackPublicEvent(type, payload = {}) {
   const body = JSON.stringify({
@@ -60,7 +64,37 @@ function tryOpenAr() {
   try {
     modelViewer.activateAR();
   } catch (err) {
-    setFallback("Toque em 'Ver em AR' para abrir manualmente.");
+    if (isIOS && iosQuickLookLink && !iosQuickLookLink.classList.contains("hidden")) {
+      iosQuickLookLink.click();
+      return;
+    }
+    setFallback("Toque em 'Ver em AR' novamente para abrir manualmente.");
+  }
+}
+
+function configureModelViewer(item) {
+  if (!modelViewer) return;
+  const hasGlb = Boolean(item.modelGlb);
+  const hasUsdz = Boolean(item.modelUsdz);
+
+  if (hasGlb) modelViewer.setAttribute("src", item.modelGlb);
+  if (hasUsdz) modelViewer.setAttribute("ios-src", item.modelUsdz);
+  if (item.image) modelViewer.setAttribute("poster", item.image);
+
+  if (isIOS && hasUsdz && iosQuickLookLink) {
+    iosQuickLookLink.href = item.modelUsdz;
+    iosQuickLookLink.classList.remove("hidden");
+  } else if (iosQuickLookLink) {
+    iosQuickLookLink.classList.add("hidden");
+    iosQuickLookLink.removeAttribute("href");
+  }
+
+  if (isIOS && !hasUsdz) {
+    arHint.textContent = "No iPhone, publique tambem o arquivo USDZ.";
+    setFallback("Este item ainda nao tem USDZ para Quick Look.");
+  } else if (isAndroid && !hasGlb) {
+    arHint.textContent = "No Android, publique o arquivo GLB.";
+    setFallback("Este item ainda nao tem GLB para Scene Viewer.");
   }
 }
 
@@ -111,9 +145,7 @@ async function loadItem() {
   updateBackLink(restaurant);
 
   const hasModel = Boolean(item.modelGlb || item.modelUsdz);
-  if (item.modelGlb) modelViewer.setAttribute("src", item.modelGlb);
-  if (item.modelUsdz) modelViewer.setAttribute("ios-src", item.modelUsdz);
-  if (item.image) modelViewer.setAttribute("poster", item.image);
+  configureModelViewer(item);
 
   if (!hasModel) {
     arButton.classList.add("hidden");
@@ -151,6 +183,30 @@ arButton.addEventListener("click", () => {
   }
   tryOpenAr();
 });
+
+if (iosQuickLookLink) {
+  iosQuickLookLink.addEventListener("click", () => {
+    if (!arOpenTracked) {
+      arOpenTracked = true;
+      trackPublicEvent("ar_open", {
+        itemId,
+        table: tableParam || "",
+        meta: { mode: "ios_quick_look" }
+      });
+    }
+  });
+}
+
+if (modelViewer) {
+  modelViewer.addEventListener("error", () => {
+    setFallback("Falha ao carregar o modelo 3D. Verifique GLB/USDZ deste item.");
+  });
+  modelViewer.addEventListener("load", () => {
+    if (!arFallback.textContent) {
+      setFallback("");
+    }
+  });
+}
 
 applyTheme();
 loadItem();

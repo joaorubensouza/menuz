@@ -16,6 +16,7 @@ Demo logins:
    - `MESHY_API_KEY=...`
    - `MESHY_AI_MODEL=meshy-6`
    - `MESHY_MAX_REFERENCE_IMAGES=4`
+   - `GOOGLE_TRANSLATE_API_KEY=...` (para traduçao automatica no cardapio)
 2. Start server with `npm start`
 3. In `/admin` -> restaurant -> `Fila 3D`:
    - create job with provider `Meshy`
@@ -24,6 +25,16 @@ Demo logins:
    - `Sincronizar` until `revisao` or `publicado`
    - `Avaliar QA` para gerar score de qualidade
    - `Publicar` (gate exige GLB + USDZ e score minimo)
+
+## Language translation (Google API)
+
+- Endpoint publico (server/worker):
+  - `POST /api/public/translate`
+- Uso no topo template:
+  - ao trocar idioma, nomes/descriçoes/categorias sao traduzidos em lote
+  - cache local por restaurante para reduzir custo/chamadas
+- No Cloudflare, configure segredo:
+  - `wrangler secret put GOOGLE_TRANSLATE_API_KEY`
 
 ## Security baseline (already applied)
 

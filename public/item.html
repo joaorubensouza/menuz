@@ -29,9 +29,19 @@
             poster=""
             shadow-intensity="1"
             exposure="0.9"
+            loading="eager"
+            reveal="auto"
+            ar-scale="fixed"
+            ar-placement="floor"
+            interaction-prompt="auto"
+            environment-image="neutral"
+            min-camera-orbit="auto auto 60%"
+            max-camera-orbit="auto auto 180%"
+            camera-orbit="0deg 75deg 115%"
           ></model-viewer>
           <div class="row">
             <button class="btn" id="arButton">Ver em AR</button>
+            <a class="btn btn-outline hidden" id="iosQuickLookLink" href="#" rel="ar">Abrir no iPhone</a>
             <span class="muted" id="arHint">Funciona melhor com boa luz.</span>
           </div>
           <div class="footer-note" id="arFallback"></div>

@@ -2,6 +2,7 @@ const params = new URLSearchParams(window.location.search);
 const slug = (params.get("r") || "").trim();
 const tableFromUrl = (params.get("mesa") || "").trim();
 const languageKey = slug ? `menuz_lang_${slug}` : "menuz_lang_template";
+const translationCacheKey = slug ? `menuz_translate_cache_${slug}` : "menuz_translate_cache_template";
 
 const searchToggle = document.getElementById("search-toggle");
 const searchWrap = document.getElementById("search-wrap");
@@ -26,6 +27,8 @@ const heroNext = document.getElementById("hero-next");
 const restaurantName = document.getElementById("restaurant-name");
 const restaurantDesc = document.getElementById("restaurant-desc");
 const languageToggle = document.getElementById("language-toggle");
+const languageBadge = document.getElementById("language-badge");
+const languageLabel = document.getElementById("language-label");
 const shareToggle = document.getElementById("share-toggle");
 const modeStrip = document.getElementById("mode-strip");
 const categoryList = document.getElementById("category-list");
@@ -43,12 +46,12 @@ const cartSubmit = document.getElementById("cart-submit");
 const cartMessage = document.getElementById("cart-message");
 
 const LANGUAGES = [
-  { code: "pt-BR", flag: "🇧🇷", label: "Português do Brasil", subtitle: "Padrao do restaurante" },
-  { code: "en-US", flag: "🇺🇸", label: "American English", subtitle: "For foreigners" },
-  { code: "es-ES", flag: "🇪🇸", label: "Español", subtitle: "Para extranjeros" },
-  { code: "fr-FR", flag: "🇫🇷", label: "Français", subtitle: "Pour les étrangers" },
-  { code: "it-IT", flag: "🇮🇹", label: "Italiano", subtitle: "Per gli stranieri" },
-  { code: "de-DE", flag: "🇩🇪", label: "Deutsch", subtitle: "Für Ausländer" }
+  { code: "pt-BR", tag: "PT", label: "Portugues do Brasil", subtitle: "Padrao do restaurante" },
+  { code: "en-US", tag: "EN", label: "English", subtitle: "For foreigners" },
+  { code: "es-ES", tag: "ES", label: "Espanol", subtitle: "Para extranjeros" },
+  { code: "fr-FR", tag: "FR", label: "Francais", subtitle: "Pour les etrangers" },
+  { code: "it-IT", tag: "IT", label: "Italiano", subtitle: "Per gli stranieri" },
+  { code: "de-DE", tag: "DE", label: "Deutsch", subtitle: "Fur Auslander" }
 ];
 
 const MESSAGES = {
@@ -269,9 +272,34 @@ const CATEGORY_TRANSLATIONS = {
   }
 };
 
+function loadTranslationCache() {
+  try {
+    const raw = localStorage.getItem(translationCacheKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function saveTranslationCache(cache) {
+  try {
+    localStorage.setItem(translationCacheKey, JSON.stringify(cache || {}));
+  } catch {
+    // no-op
+  }
+}
+
 const state = {
   restaurant: null,
   items: [],
+  baseItems: [],
+  baseDescription: "",
+  baseCategories: [],
   cart: [],
   selectedCategory: "all",
   categories: [],
@@ -279,7 +307,10 @@ const state = {
   heroImages: [],
   heroIndex: 0,
   heroTimer: null,
-  language: localStorage.getItem(languageKey) || "pt-BR"
+  language: localStorage.getItem(languageKey) || "pt-BR",
+  defaultLanguage: "pt-BR",
+  translationCache: loadTranslationCache(),
+  isTranslating: false
 };
 const HERO_FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1600&q=80";
@@ -358,6 +389,22 @@ function getLanguageConfig(code = state.language) {
   return LANGUAGES.find((lang) => lang.code === code) || LANGUAGES[0];
 }
 
+function updateLanguageButton() {
+  const lang = getLanguageConfig();
+  if (languageToggle) {
+    languageToggle.setAttribute("aria-label", `${t("language")}: ${lang.label || lang.code}`);
+    languageToggle.setAttribute("title", `${t("language")}: ${lang.label || lang.code}`);
+  }
+  if (languageBadge) {
+    languageBadge.textContent = lang.tag || lang.code.split("-")[0] || "LG";
+  }
+  if (languageLabel) {
+    languageLabel.textContent = t("language");
+  } else if (languageToggle) {
+    languageToggle.textContent = t("language");
+  }
+}
+
 function getEnabledLanguages() {
   const settings = (state.restaurant && state.restaurant.languageSettings) || {};
   const configured = Array.isArray(settings.languages)
@@ -377,13 +424,152 @@ function getDefaultLanguageCode() {
   return enabled[0].code;
 }
 
+function getCachedTranslation(languageCode, text) {
+  const safeText = (text || "").toString().trim();
+  if (!safeText) return "";
+  const langCache = state.translationCache[languageCode];
+  if (!langCache || typeof langCache !== "object") return "";
+  return (langCache[safeText] || "").toString().trim();
+}
+
+function setCachedTranslations(languageCode, translationsMap) {
+  const input = translationsMap && typeof translationsMap === "object" ? translationsMap : {};
+  if (!state.translationCache[languageCode] || typeof state.translationCache[languageCode] !== "object") {
+    state.translationCache[languageCode] = {};
+  }
+  let changed = false;
+  Object.entries(input).forEach(([sourceText, targetText]) => {
+    const source = (sourceText || "").toString().trim();
+    const target = (targetText || "").toString().trim();
+    if (!source || !target) return;
+    if (state.translationCache[languageCode][source] === target) return;
+    state.translationCache[languageCode][source] = target;
+    changed = true;
+  });
+  if (changed) {
+    saveTranslationCache(state.translationCache);
+  }
+}
+
+async function requestTranslations(texts, targetLanguage, sourceLanguage) {
+  const uniqueTexts = [...new Set((texts || []).map((text) => (text || "").toString().trim()).filter(Boolean))];
+  if (!uniqueTexts.length) return {};
+
+  const missing = uniqueTexts.filter((text) => !getCachedTranslation(targetLanguage, text));
+  if (missing.length > 0) {
+    const chunks = [];
+    let currentChunk = [];
+    let currentChars = 0;
+    const MAX_TEXTS_PER_CHUNK = 60;
+    const MAX_CHARS_PER_CHUNK = 5000;
+
+    missing.forEach((text) => {
+      const safeText = (text || "").toString();
+      const nextChars = currentChars + safeText.length;
+      if (
+        currentChunk.length >= MAX_TEXTS_PER_CHUNK ||
+        nextChars > MAX_CHARS_PER_CHUNK
+      ) {
+        if (currentChunk.length) chunks.push(currentChunk);
+        currentChunk = [];
+        currentChars = 0;
+      }
+      currentChunk.push(safeText);
+      currentChars += safeText.length;
+    });
+    if (currentChunk.length) chunks.push(currentChunk);
+
+    for (const chunk of chunks) {
+      const response = await fetch("/api/public/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texts: chunk,
+          targetLanguage,
+          sourceLanguage
+        })
+      });
+      if (!response.ok) {
+        throw new Error("translate_failed");
+      }
+      const data = await response.json();
+      const translated = Array.isArray(data.translations) ? data.translations : [];
+      const toCache = {};
+      chunk.forEach((original, index) => {
+        const translatedText = (translated[index] || "").toString().trim();
+        if (translatedText) {
+          toCache[original] = translatedText;
+        }
+      });
+      setCachedTranslations(targetLanguage, toCache);
+    }
+  }
+
+  const map = {};
+  uniqueTexts.forEach((text) => {
+    map[text] = getCachedTranslation(targetLanguage, text) || text;
+  });
+  return map;
+}
+
+async function applyTranslatedContent() {
+  if (!state.restaurant) return;
+
+  const defaultLanguage = state.defaultLanguage || getDefaultLanguageCode();
+  if (state.language === defaultLanguage) {
+    state.items = state.baseItems.map((item) => ({ ...item }));
+    state.categories = [...state.baseCategories];
+    restaurantDesc.textContent = state.baseDescription || "";
+    return;
+  }
+
+  const texts = [];
+  if (state.baseDescription) texts.push(state.baseDescription);
+  state.baseItems.forEach((item) => {
+    if (item.name) texts.push(item.name);
+    if (item.description) texts.push(item.description);
+    const category = inferCategory(item);
+    if (category) texts.push(category);
+  });
+
+  if (!texts.length) {
+    state.items = state.baseItems.map((item) => ({ ...item }));
+    state.categories = [...state.baseCategories];
+    restaurantDesc.textContent = state.baseDescription || "";
+    return;
+  }
+
+  state.isTranslating = true;
+  try {
+    const map = await requestTranslations(texts, state.language, defaultLanguage);
+    state.items = state.baseItems.map((item) => {
+      const name = item.name ? map[item.name] || item.name : item.name;
+      const description = item.description ? map[item.description] || item.description : item.description;
+      const rawCategory = inferCategory(item);
+      const category = rawCategory ? map[rawCategory] || rawCategory : rawCategory;
+      return { ...item, name, description, category };
+    });
+    state.categories = [...new Set(state.items.map((item) => inferCategory(item)))];
+    restaurantDesc.textContent = state.baseDescription ? map[state.baseDescription] || state.baseDescription : "";
+  } catch (error) {
+    state.items = state.baseItems.map((item) => ({ ...item }));
+    state.categories = [...state.baseCategories];
+    restaurantDesc.textContent = state.baseDescription || "";
+  } finally {
+    state.isTranslating = false;
+  }
+}
+
 function translateCategory(rawCategory) {
   const normalized = normalizeTextKey(rawCategory);
   const baseDict = CATEGORY_TRANSLATIONS[normalized] || {};
   const customMap = (state.restaurant && state.restaurant.categoryLabels) || {};
   const customDict = customMap[normalized] || {};
   const dict = { ...baseDict, ...customDict };
-  if (Object.keys(dict).length === 0) return rawCategory;
+  if (Object.keys(dict).length === 0) {
+    const translated = getCachedTranslation(state.language, rawCategory);
+    return translated || rawCategory;
+  }
   return dict[state.language] || dict["pt-BR"] || rawCategory;
 }
 
@@ -411,6 +597,7 @@ function applyLanguageTexts() {
   searchInput.placeholder = t("searchPlaceholder");
   emptyState.textContent = t("noItemsFound");
   langTitle.textContent = t("language");
+  updateLanguageButton();
   cartClose.textContent = t("close");
   drawerClose.textContent = t("close");
   const brandLabel = document.querySelector(".cart-head .brand.small");
@@ -441,14 +628,16 @@ function setTheme() {
 
 function renderDrawer() {
   const lang = getLanguageConfig();
-  drawerLang.textContent = `${lang.flag} ${lang.label}`;
+  drawerLang.innerHTML = `<span class="lang-flag">${escapeHtml(lang.tag || "LG")}</span> ${escapeHtml(
+    lang.label || ""
+  )}`;
 
   const contact = getRestaurantContact();
   drawerInfo.innerHTML = `
-    <li><span>📍</span><span>${escapeHtml(contact.address || "-")}</span></li>
-    <li><span>📞</span><span>${escapeHtml(contact.phone || "-")}</span></li>
-    <li><span>✉️</span><span>${escapeHtml(contact.email || "-")}</span></li>
-    <li><span>🌐</span><span>${escapeHtml(contact.website || "-")}</span></li>
+    <li><span>Endereco</span><span>${escapeHtml(contact.address || "-")}</span></li>
+    <li><span>Telefone</span><span>${escapeHtml(contact.phone || "-")}</span></li>
+    <li><span>Email</span><span>${escapeHtml(contact.email || "-")}</span></li>
+    <li><span>Site</span><span>${escapeHtml(contact.website || "-")}</span></li>
   `;
 }
 
@@ -477,14 +666,27 @@ function renderLanguageList() {
     button.className = `lang-option ${isActive ? "active" : ""}`;
     button.innerHTML = `
       <div class="lang-copy">
-        <strong>${lang.flag} ${escapeHtml(lang.label)}</strong>
+        <strong><span class="lang-flag">${escapeHtml(lang.tag || "LG")}</span>${escapeHtml(
+          lang.label
+        )}</strong>
         <span>${escapeHtml(lang.subtitle)}</span>
       </div>
       <span class="lang-check"></span>
     `;
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
+      if (state.language === lang.code) {
+        closeLanguageModal();
+        return;
+      }
       state.language = lang.code;
       localStorage.setItem(languageKey, state.language);
+      await applyTranslatedContent();
+      if (
+        state.selectedCategory !== "all" &&
+        !state.categories.some((category) => category.toLowerCase() === state.selectedCategory.toLowerCase())
+      ) {
+        state.selectedCategory = "all";
+      }
       applyLanguageTexts();
       renderLanguageList();
       renderDrawer();
@@ -492,6 +694,7 @@ function renderLanguageList() {
       renderTabs();
       renderMenu();
       renderCart();
+      closeLanguageModal();
     });
     langList.appendChild(button);
   });
@@ -931,13 +1134,17 @@ async function loadRestaurant() {
 
   const data = await res.json();
   state.restaurant = data.restaurant;
-  state.items = Array.isArray(data.items) ? data.items : [];
-  state.categories = [...new Set(state.items.map((item) => inferCategory(item)))];
+  state.baseItems = Array.isArray(data.items) ? data.items.map((item) => ({ ...item })) : [];
+  state.items = state.baseItems.map((item) => ({ ...item }));
+  state.baseCategories = [...new Set(state.baseItems.map((item) => inferCategory(item)))];
+  state.categories = [...state.baseCategories];
+  state.baseDescription = (state.restaurant && state.restaurant.description) || "";
   state.heroIndex = 0;
+  state.defaultLanguage = getDefaultLanguageCode();
 
   const storedLanguage = localStorage.getItem(languageKey) || "";
   const enabledLanguages = getEnabledLanguages();
-  const defaultLanguageCode = getDefaultLanguageCode();
+  const defaultLanguageCode = state.defaultLanguage;
   if (enabledLanguages.some((lang) => lang.code === storedLanguage)) {
     state.language = storedLanguage;
   } else {
@@ -946,7 +1153,6 @@ async function loadRestaurant() {
   }
 
   restaurantName.textContent = state.restaurant.name || "Cardapio";
-  restaurantDesc.textContent = state.restaurant.description || "";
   trackPublicEvent("menu_view", {
     restaurantSlug: state.restaurant.slug || slug,
     table: getTableValue()
@@ -958,6 +1164,7 @@ async function loadRestaurant() {
     });
   }
 
+  await applyTranslatedContent();
   setTheme();
   applyLanguageTexts();
   renderDrawer();
