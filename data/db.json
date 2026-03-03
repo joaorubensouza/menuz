@@ -320,8 +320,8 @@
       "description": "Bolo teste",
       "price": 97,
       "image": "/uploads/images/3909015a-3e3f-4646-9154-e12bc1ed519b.jpeg",
-      "modelGlb": "",
-      "modelUsdz": "",
+      "modelGlb": "/uploads/models/Casinha.glb",
+      "modelUsdz": "/uploads/models/Casinha.usdz",
       "scans": [
         "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/c9ec5bf9-9599-49e5-8ada-e42fa4437404.jpg",
         "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/618075e8-7f8a-4370-a3c2-4c92282189b1.jpg",
