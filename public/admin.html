@@ -98,6 +98,16 @@
                   <option value="de-DE">Deutsch</option>
                 </select>
               </div>
+              <textarea
+                class="input"
+                id="restaurant-ui-messages"
+                placeholder='Mensagens customizadas JSON. Ex: {"pt-BR":{"ar":"Ver em AR"}}'
+              ></textarea>
+              <textarea
+                class="input"
+                id="restaurant-category-labels"
+                placeholder='Categorias customizadas JSON. Ex: {"pratos-principais":{"en-US":"Main Courses"}}'
+              ></textarea>
               <button class="btn" type="submit">Criar restaurante</button>
             </form>
           </div>
@@ -148,7 +158,41 @@
                   <option value="de-DE">Deutsch</option>
                 </select>
               </div>
+              <textarea
+                class="input"
+                id="edit-ui-messages"
+                placeholder='Mensagens customizadas JSON'
+              ></textarea>
+              <textarea
+                class="input"
+                id="edit-category-labels"
+                placeholder='Categorias customizadas JSON'
+              ></textarea>
               <button class="btn" type="submit">Salvar restaurante</button>
+            </form>
+          </div>
+
+          <div class="panel" style="margin-top: 16px;" id="onboarding-panel">
+            <div class="tag">Onboarding rapido</div>
+            <p class="muted">Crie o primeiro prato + opcionalmente ja abre job 3D.</p>
+            <form class="form-grid" id="onboarding-form">
+              <div class="form-row">
+                <input class="input" id="onb-item-name" placeholder="Nome do prato" required />
+                <input class="input" id="onb-item-price" placeholder="Preco" type="number" step="0.01" />
+                <input class="input" id="onb-item-category" placeholder="Categoria (ex: Pratos Principais)" />
+              </div>
+              <textarea class="input" id="onb-item-desc" placeholder="Descricao do prato"></textarea>
+              <div class="form-row">
+                <input class="input" id="onb-item-image-file" type="file" accept="image/*" />
+                <input class="input" id="onb-item-model-glb-file" type="file" accept=".glb" />
+                <input class="input" id="onb-item-model-usdz-file" type="file" accept=".usdz" />
+              </div>
+              <label class="row" style="gap: 8px;">
+                <input type="checkbox" id="onb-create-job" />
+                <span class="muted">Criar job 3D na fila automaticamente</span>
+              </label>
+              <button class="btn" type="submit">Criar prato inicial</button>
+              <div class="muted" id="onboarding-msg"></div>
             </form>
           </div>
 

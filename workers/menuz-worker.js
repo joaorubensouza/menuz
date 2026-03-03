@@ -20,6 +20,31 @@ const JSON_HEADERS = {
 const DEFAULT_ACCENT = "#D95F2B";
 const DEFAULT_LANGUAGE_CODE = "pt-BR";
 const DEFAULT_LANGUAGE_OPTIONS = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
+const UI_MESSAGE_KEYS = [
+  "searchPlaceholder",
+  "modeMenu",
+  "menuPersonality",
+  "all",
+  "ar",
+  "add",
+  "noItemsFound",
+  "orderOfTable",
+  "orderSummary",
+  "close",
+  "noItemsInCart",
+  "total",
+  "tablePlaceholder",
+  "clear",
+  "submit",
+  "sending",
+  "msgNeedTable",
+  "msgEmpty",
+  "msgFail",
+  "msgOk",
+  "msgConnection",
+  "msgCleared",
+  "language"
+];
 const encoder = new TextEncoder();
 let schemaInitPromise = null;
 
@@ -124,7 +149,9 @@ async function ensureRuntimeSchema(env) {
       "ALTER TABLE restaurants ADD COLUMN contact_email TEXT DEFAULT ''",
       "ALTER TABLE restaurants ADD COLUMN contact_website TEXT DEFAULT ''",
       "ALTER TABLE restaurants ADD COLUMN languages_json TEXT DEFAULT '[]'",
-      "ALTER TABLE restaurants ADD COLUMN default_language TEXT DEFAULT 'pt-BR'"
+      "ALTER TABLE restaurants ADD COLUMN default_language TEXT DEFAULT 'pt-BR'",
+      "ALTER TABLE restaurants ADD COLUMN ui_messages_json TEXT DEFAULT '{}'",
+      "ALTER TABLE restaurants ADD COLUMN category_labels_json TEXT DEFAULT '{}'"
     ];
 
     for (const statement of alterStatements) {
@@ -348,7 +375,9 @@ function mapRestaurantRow(row) {
     languageSettings: {
       defaultLanguage,
       languages
-    }
+    },
+    uiMessages: sanitizeUiMessages(parseJsonSafe(row.ui_messages_json, {})),
+    categoryLabels: sanitizeCategoryLabels(parseJsonSafe(row.category_labels_json, {}))
   };
 }
 
@@ -493,6 +522,52 @@ function sanitizeContactEmail(value) {
   const email = sanitizeText(value, 160).toLowerCase();
   if (!email) return "";
   return EMAIL_PATTERN.test(email) ? email : "";
+}
+
+function sanitizeUiMessages(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output = {};
+
+  for (const [langCode, rawEntries] of Object.entries(value)) {
+    const code = sanitizeLanguageCode(langCode);
+    if (!rawEntries || typeof rawEntries !== "object" || Array.isArray(rawEntries)) continue;
+    const entries = {};
+    for (const key of UI_MESSAGE_KEYS) {
+      if (rawEntries[key] === undefined || rawEntries[key] === null) continue;
+      const text = sanitizeText(rawEntries[key], 180);
+      if (text) entries[key] = text;
+    }
+    if (Object.keys(entries).length > 0) {
+      output[code] = entries;
+    }
+  }
+
+  return output;
+}
+
+function sanitizeCategoryLabels(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output = {};
+
+  for (const [categoryKeyRaw, translationsRaw] of Object.entries(value)) {
+    const categoryKey = normalizeSlug(categoryKeyRaw);
+    if (!categoryKey) continue;
+    if (!translationsRaw || typeof translationsRaw !== "object" || Array.isArray(translationsRaw)) continue;
+
+    const translations = {};
+    for (const [langCode, textRaw] of Object.entries(translationsRaw)) {
+      const code = sanitizeLanguageCode(langCode);
+      const text = sanitizeText(textRaw, 80);
+      if (!text) continue;
+      translations[code] = text;
+    }
+
+    if (Object.keys(translations).length > 0) {
+      output[categoryKey] = translations;
+    }
+  }
+
+  return output;
 }
 
 function sanitizeNullableUrl(value, max = 600) {
@@ -1693,7 +1768,9 @@ async function handleApi(request, env, url) {
       contactEmail: sanitizeContactEmail(body.contactEmail || body.email),
       contactWebsite: sanitizeText(body.contactWebsite || body.website, 220),
       defaultLanguage: sanitizeLanguageCode(body.defaultLanguage || DEFAULT_LANGUAGE_CODE),
-      languages: sanitizeLanguageList(body.languages, body.defaultLanguage || DEFAULT_LANGUAGE_CODE)
+      languages: sanitizeLanguageList(body.languages, body.defaultLanguage || DEFAULT_LANGUAGE_CODE),
+      uiMessages: sanitizeUiMessages(body.uiMessages),
+      categoryLabels: sanitizeCategoryLabels(body.categoryLabels)
     };
     if (!restaurant.languages.includes(restaurant.defaultLanguage)) {
       restaurant.languages.unshift(restaurant.defaultLanguage);
@@ -1701,8 +1778,8 @@ async function handleApi(request, env, url) {
     }
     await env.DB.prepare(
       `INSERT INTO restaurants
-      (id, name, slug, description, logo, accent, template, hero_images_json, contact_address, contact_phone, contact_email, contact_website, languages_json, default_language)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
+      (id, name, slug, description, logo, accent, template, hero_images_json, contact_address, contact_phone, contact_email, contact_website, languages_json, default_language, ui_messages_json, category_labels_json)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`
     )
       .bind(
         restaurant.id,
@@ -1718,7 +1795,9 @@ async function handleApi(request, env, url) {
         restaurant.contactEmail,
         restaurant.contactWebsite,
         JSON.stringify(restaurant.languages),
-        restaurant.defaultLanguage
+        restaurant.defaultLanguage,
+        JSON.stringify(restaurant.uiMessages),
+        JSON.stringify(restaurant.categoryLabels)
       )
       .run();
     const persisted = await getRestaurantById(env, restaurant.id);
@@ -1766,6 +1845,12 @@ async function handleApi(request, env, url) {
         (next.languageSettings && next.languageSettings.defaultLanguage) || currentDefaultLanguage;
       next.languageSettings.languages = sanitizeLanguageList(body.languages, defaultCandidate);
     }
+    if (body.uiMessages !== undefined) {
+      next.uiMessages = sanitizeUiMessages(body.uiMessages);
+    }
+    if (body.categoryLabels !== undefined) {
+      next.categoryLabels = sanitizeCategoryLabels(body.categoryLabels);
+    }
     next.languageSettings = next.languageSettings || {};
     next.languageSettings.defaultLanguage = sanitizeLanguageCode(
       next.languageSettings.defaultLanguage || currentDefaultLanguage
@@ -1794,8 +1879,8 @@ async function handleApi(request, env, url) {
       `UPDATE restaurants
        SET name = ?1, slug = ?2, description = ?3, logo = ?4, accent = ?5, template = ?6, hero_images_json = ?7,
            contact_address = ?8, contact_phone = ?9, contact_email = ?10, contact_website = ?11,
-           languages_json = ?12, default_language = ?13
-       WHERE id = ?14`
+           languages_json = ?12, default_language = ?13, ui_messages_json = ?14, category_labels_json = ?15
+       WHERE id = ?16`
     )
       .bind(
         next.name,
@@ -1811,6 +1896,8 @@ async function handleApi(request, env, url) {
         (next.contact && next.contact.website) || "",
         JSON.stringify((next.languageSettings && next.languageSettings.languages) || DEFAULT_LANGUAGE_OPTIONS),
         (next.languageSettings && next.languageSettings.defaultLanguage) || DEFAULT_LANGUAGE_CODE,
+        JSON.stringify(next.uiMessages || {}),
+        JSON.stringify(next.categoryLabels || {}),
         next.id
       )
       .run();

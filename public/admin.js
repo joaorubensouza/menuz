@@ -27,6 +27,8 @@ const managePanel = document.getElementById("manage-panel");
 const manageTitle = document.getElementById("manage-title");
 const backRestaurants = document.getElementById("back-restaurants");
 const restaurantEditForm = document.getElementById("restaurant-edit-form");
+const onboardingForm = document.getElementById("onboarding-form");
+const onboardingMsg = document.getElementById("onboarding-msg");
 
 const clientUserPanel = document.getElementById("client-user-panel");
 const clientUserForm = document.getElementById("client-user-form");
@@ -113,6 +115,29 @@ function getSelectedLanguages(selectId) {
     .map((option) => option.value)
     .filter((value, index, arr) => LANGUAGE_CODES.includes(value) && arr.indexOf(value) === index);
   return selected.length ? selected : [...LANGUAGE_CODES];
+}
+
+function parseJsonField(fieldId, fallbackValue, label) {
+  const input = document.getElementById(fieldId);
+  if (!input) return fallbackValue;
+  const raw = (input.value || "").trim();
+  if (!raw) return fallbackValue;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("json_not_object");
+    }
+    return parsed;
+  } catch (err) {
+    throw new Error(`${label} invalido. Corrija o JSON.`);
+  }
+}
+
+function setJsonField(fieldId, value) {
+  const input = document.getElementById(fieldId);
+  if (!input) return;
+  const data = value && typeof value === "object" ? value : {};
+  input.value = Object.keys(data).length ? JSON.stringify(data, null, 2) : "";
 }
 
 function setSelectedLanguages(selectId, values) {
@@ -341,70 +366,84 @@ logoutBtn.addEventListener("click", async () => {
 
 restaurantForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const createDefaultLanguage = normalizeDefaultLanguage(
-    document.getElementById("restaurant-default-language").value
-  );
-  const createLanguages = getSelectedLanguages("restaurant-languages");
-  if (!createLanguages.includes(createDefaultLanguage)) {
-    createLanguages.unshift(createDefaultLanguage);
+  try {
+    const createDefaultLanguage = normalizeDefaultLanguage(
+      document.getElementById("restaurant-default-language").value
+    );
+    const createLanguages = getSelectedLanguages("restaurant-languages");
+    if (!createLanguages.includes(createDefaultLanguage)) {
+      createLanguages.unshift(createDefaultLanguage);
+    }
+    const payload = {
+      name: document.getElementById("restaurant-name").value.trim(),
+      slug: document.getElementById("restaurant-slug").value.trim(),
+      description: document.getElementById("restaurant-desc").value.trim(),
+      logo: document.getElementById("restaurant-logo").value.trim(),
+      accent: document.getElementById("restaurant-accent").value.trim(),
+      template: document.getElementById("restaurant-template").value.trim(),
+      contactAddress: document.getElementById("restaurant-contact-address").value.trim(),
+      contactPhone: document.getElementById("restaurant-contact-phone").value.trim(),
+      contactEmail: document.getElementById("restaurant-contact-email").value.trim(),
+      contactWebsite: document.getElementById("restaurant-contact-website").value.trim(),
+      defaultLanguage: createDefaultLanguage,
+      languages: createLanguages,
+      uiMessages: parseJsonField("restaurant-ui-messages", {}, "Mensagens customizadas"),
+      categoryLabels: parseJsonField("restaurant-category-labels", {}, "Categorias customizadas")
+    };
+    const data = await api("/api/restaurants", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    state.restaurants.push(data.restaurant);
+    renderRestaurants();
+    restaurantForm.reset();
+    document.getElementById("restaurant-default-language").value = DEFAULT_LANGUAGE_CODE;
+    setSelectedLanguages("restaurant-languages", LANGUAGE_CODES);
+    syncLanguageControls("restaurant-default-language", "restaurant-languages");
+    setJsonField("restaurant-ui-messages", {});
+    setJsonField("restaurant-category-labels", {});
+  } catch (err) {
+    alert(err.message || "Erro ao criar restaurante.");
   }
-  const payload = {
-    name: document.getElementById("restaurant-name").value.trim(),
-    slug: document.getElementById("restaurant-slug").value.trim(),
-    description: document.getElementById("restaurant-desc").value.trim(),
-    logo: document.getElementById("restaurant-logo").value.trim(),
-    accent: document.getElementById("restaurant-accent").value.trim(),
-    template: document.getElementById("restaurant-template").value.trim(),
-    contactAddress: document.getElementById("restaurant-contact-address").value.trim(),
-    contactPhone: document.getElementById("restaurant-contact-phone").value.trim(),
-    contactEmail: document.getElementById("restaurant-contact-email").value.trim(),
-    contactWebsite: document.getElementById("restaurant-contact-website").value.trim(),
-    defaultLanguage: createDefaultLanguage,
-    languages: createLanguages
-  };
-  const data = await api("/api/restaurants", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-  state.restaurants.push(data.restaurant);
-  renderRestaurants();
-  restaurantForm.reset();
-  document.getElementById("restaurant-default-language").value = DEFAULT_LANGUAGE_CODE;
-  setSelectedLanguages("restaurant-languages", LANGUAGE_CODES);
-  syncLanguageControls("restaurant-default-language", "restaurant-languages");
 });
 
 restaurantEditForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.activeRestaurant) return;
-  const editDefaultLanguage = normalizeDefaultLanguage(
-    document.getElementById("edit-default-language").value
-  );
-  const editLanguages = getSelectedLanguages("edit-languages");
-  if (!editLanguages.includes(editDefaultLanguage)) {
-    editLanguages.unshift(editDefaultLanguage);
+  try {
+    const editDefaultLanguage = normalizeDefaultLanguage(
+      document.getElementById("edit-default-language").value
+    );
+    const editLanguages = getSelectedLanguages("edit-languages");
+    if (!editLanguages.includes(editDefaultLanguage)) {
+      editLanguages.unshift(editDefaultLanguage);
+    }
+    const payload = {
+      name: document.getElementById("edit-name").value.trim(),
+      slug: document.getElementById("edit-slug").value.trim(),
+      description: document.getElementById("edit-desc").value.trim(),
+      logo: document.getElementById("edit-logo").value.trim(),
+      accent: document.getElementById("edit-accent").value.trim(),
+      template: document.getElementById("edit-template").value.trim(),
+      contactAddress: document.getElementById("edit-contact-address").value.trim(),
+      contactPhone: document.getElementById("edit-contact-phone").value.trim(),
+      contactEmail: document.getElementById("edit-contact-email").value.trim(),
+      contactWebsite: document.getElementById("edit-contact-website").value.trim(),
+      defaultLanguage: editDefaultLanguage,
+      languages: editLanguages,
+      uiMessages: parseJsonField("edit-ui-messages", {}, "Mensagens customizadas"),
+      categoryLabels: parseJsonField("edit-category-labels", {}, "Categorias customizadas")
+    };
+    const data = await api(`/api/restaurants/${state.activeRestaurant.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+    state.activeRestaurant = data.restaurant;
+    manageTitle.textContent = `Gerenciar ${state.activeRestaurant.name}`;
+    fillRestaurantForm(state.activeRestaurant);
+  } catch (err) {
+    alert(err.message || "Erro ao salvar restaurante.");
   }
-  const payload = {
-    name: document.getElementById("edit-name").value.trim(),
-    slug: document.getElementById("edit-slug").value.trim(),
-    description: document.getElementById("edit-desc").value.trim(),
-    logo: document.getElementById("edit-logo").value.trim(),
-    accent: document.getElementById("edit-accent").value.trim(),
-    template: document.getElementById("edit-template").value.trim(),
-    contactAddress: document.getElementById("edit-contact-address").value.trim(),
-    contactPhone: document.getElementById("edit-contact-phone").value.trim(),
-    contactEmail: document.getElementById("edit-contact-email").value.trim(),
-    contactWebsite: document.getElementById("edit-contact-website").value.trim(),
-    defaultLanguage: editDefaultLanguage,
-    languages: editLanguages
-  };
-  const data = await api(`/api/restaurants/${state.activeRestaurant.id}`, {
-    method: "PUT",
-    body: JSON.stringify(payload)
-  });
-  state.activeRestaurant = data.restaurant;
-  manageTitle.textContent = `Gerenciar ${state.activeRestaurant.name}`;
-  fillRestaurantForm(state.activeRestaurant);
 });
 
 clientUserForm.addEventListener("submit", async (event) => {
@@ -501,6 +540,68 @@ modelJobForm.addEventListener("submit", async (event) => {
     modelJobMsg.textContent = "Erro ao criar job da fila.";
   }
 });
+
+if (onboardingForm) {
+  onboardingForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.activeRestaurant) return;
+
+    if (onboardingMsg) onboardingMsg.textContent = "";
+
+    const payload = {
+      name: document.getElementById("onb-item-name").value.trim(),
+      price: document.getElementById("onb-item-price").value.trim(),
+      category: document.getElementById("onb-item-category").value.trim(),
+      description: document.getElementById("onb-item-desc").value.trim()
+    };
+
+    if (!payload.name) {
+      if (onboardingMsg) onboardingMsg.textContent = "Informe o nome do prato.";
+      return;
+    }
+
+    const imageFile = document.getElementById("onb-item-image-file").files[0];
+    const glbFile = document.getElementById("onb-item-model-glb-file").files[0];
+    const usdzFile = document.getElementById("onb-item-model-usdz-file").files[0];
+    const createJob = Boolean(document.getElementById("onb-create-job").checked);
+
+    try {
+      const data = await api(`/api/restaurants/${state.activeRestaurant.id}/items`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      const item = data.item;
+
+      await uploadItemAssetsFromFiles(item.id, imageFile, glbFile, usdzFile);
+
+      if (createJob) {
+        await api(`/api/restaurants/${state.activeRestaurant.id}/model-jobs`, {
+          method: "POST",
+          body: JSON.stringify({
+            itemId: item.id,
+            sourceType: "upload",
+            provider: modelJobProvider ? modelJobProvider.value : "manual",
+            aiModel: modelJobAiModel ? modelJobAiModel.value.trim() : "",
+            autoMode: false,
+            notes: "Job criado no onboarding rapido"
+          })
+        });
+      }
+
+      onboardingForm.reset();
+      if (onboardingMsg) {
+        onboardingMsg.textContent = createJob
+          ? "Prato criado e job 3D adicionado na fila."
+          : "Prato criado com sucesso.";
+      }
+      await loadItems(state.activeRestaurant.id);
+      await loadModelJobs(state.activeRestaurant.id);
+      await loadAnalytics(state.activeRestaurant.id);
+    } catch (err) {
+      if (onboardingMsg) onboardingMsg.textContent = "Falha no onboarding rapido.";
+    }
+  });
+}
 
 if (modelJobProvider) {
   modelJobProvider.addEventListener("change", () => {
@@ -650,6 +751,8 @@ function fillRestaurantForm(restaurant) {
   );
   setSelectedLanguages("edit-languages", languageSettings.languages || LANGUAGE_CODES);
   syncLanguageControls("edit-default-language", "edit-languages");
+  setJsonField("edit-ui-messages", restaurant.uiMessages || {});
+  setJsonField("edit-category-labels", restaurant.categoryLabels || {});
 }
 
 function populateModelJobItems() {
@@ -1107,11 +1210,7 @@ function openQr(item) {
   });
 }
 
-async function uploadItemAssets(itemId) {
-  const imageFile = document.getElementById("item-image-file").files[0];
-  const glbFile = document.getElementById("item-model-glb-file").files[0];
-  const usdzFile = document.getElementById("item-model-usdz-file").files[0];
-
+async function uploadItemAssetsFromFiles(itemId, imageFile, glbFile, usdzFile) {
   if (!imageFile && !glbFile && !usdzFile) return;
 
   const form = new FormData();
@@ -1124,6 +1223,14 @@ async function uploadItemAssets(itemId) {
     body: form,
     isForm: true
   });
+}
+
+async function uploadItemAssets(itemId) {
+  const imageFile = document.getElementById("item-image-file").files[0];
+  const glbFile = document.getElementById("item-model-glb-file").files[0];
+  const usdzFile = document.getElementById("item-model-usdz-file").files[0];
+
+  await uploadItemAssetsFromFiles(itemId, imageFile, glbFile, usdzFile);
 
   document.getElementById("item-image-file").value = "";
   document.getElementById("item-model-glb-file").value = "";

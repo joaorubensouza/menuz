@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS restaurants (
   contact_email TEXT DEFAULT '',
   contact_website TEXT DEFAULT '',
   languages_json TEXT DEFAULT '[]',
-  default_language TEXT DEFAULT 'pt-BR'
+  default_language TEXT DEFAULT 'pt-BR',
+  ui_messages_json TEXT DEFAULT '{}',
+  category_labels_json TEXT DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS items (

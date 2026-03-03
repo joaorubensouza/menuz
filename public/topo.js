@@ -338,7 +338,16 @@ function normalizeTextKey(value) {
 }
 
 function currentMessages() {
-  return MESSAGES[state.language] || MESSAGES["pt-BR"];
+  const base = MESSAGES[state.language] || MESSAGES["pt-BR"];
+  const customRoot = (state.restaurant && state.restaurant.uiMessages) || {};
+  const custom = customRoot[state.language] || {};
+  const merged = { ...base };
+  Object.entries(custom).forEach(([key, value]) => {
+    if (typeof value !== "string") return;
+    if (key === "orderFab") return;
+    merged[key] = value;
+  });
+  return merged;
 }
 
 function t(key) {
@@ -369,8 +378,12 @@ function getDefaultLanguageCode() {
 }
 
 function translateCategory(rawCategory) {
-  const dict = CATEGORY_TRANSLATIONS[normalizeTextKey(rawCategory)];
-  if (!dict) return rawCategory;
+  const normalized = normalizeTextKey(rawCategory);
+  const baseDict = CATEGORY_TRANSLATIONS[normalized] || {};
+  const customMap = (state.restaurant && state.restaurant.categoryLabels) || {};
+  const customDict = customMap[normalized] || {};
+  const dict = { ...baseDict, ...customDict };
+  if (Object.keys(dict).length === 0) return rawCategory;
   return dict[state.language] || dict["pt-BR"] || rawCategory;
 }
 

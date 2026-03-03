@@ -55,6 +55,31 @@ const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LANGUAGE_CODES = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
 const DEFAULT_LANGUAGE_CODE = "pt-BR";
+const UI_MESSAGE_KEYS = [
+  "searchPlaceholder",
+  "modeMenu",
+  "menuPersonality",
+  "all",
+  "ar",
+  "add",
+  "noItemsFound",
+  "orderOfTable",
+  "orderSummary",
+  "close",
+  "noItemsInCart",
+  "total",
+  "tablePlaceholder",
+  "clear",
+  "submit",
+  "sending",
+  "msgNeedTable",
+  "msgEmpty",
+  "msgFail",
+  "msgOk",
+  "msgConnection",
+  "msgCleared",
+  "language"
+];
 
 function normalizeEmail(value) {
   return (value || "").toString().trim().toLowerCase();
@@ -193,6 +218,46 @@ function sanitizeContactEmail(value) {
   return EMAIL_PATTERN.test(email) ? email : "";
 }
 
+function sanitizeUiMessages(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output = {};
+  Object.entries(value).forEach(([langCode, entriesRaw]) => {
+    const code = normalizeLanguageCode(langCode);
+    if (!entriesRaw || typeof entriesRaw !== "object" || Array.isArray(entriesRaw)) return;
+    const entries = {};
+    UI_MESSAGE_KEYS.forEach((key) => {
+      if (entriesRaw[key] === undefined || entriesRaw[key] === null) return;
+      const text = entriesRaw[key].toString().trim().slice(0, 180);
+      if (text) entries[key] = text;
+    });
+    if (Object.keys(entries).length > 0) {
+      output[code] = entries;
+    }
+  });
+  return output;
+}
+
+function sanitizeCategoryLabels(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output = {};
+  Object.entries(value).forEach(([categoryRaw, translationsRaw]) => {
+    const categoryKey = normalizeSlug(categoryRaw);
+    if (!categoryKey || !translationsRaw || typeof translationsRaw !== "object" || Array.isArray(translationsRaw)) {
+      return;
+    }
+    const translations = {};
+    Object.entries(translationsRaw).forEach(([langCode, textRaw]) => {
+      const code = normalizeLanguageCode(langCode);
+      const text = (textRaw || "").toString().trim().slice(0, 80);
+      if (text) translations[code] = text;
+    });
+    if (Object.keys(translations).length > 0) {
+      output[categoryKey] = translations;
+    }
+  });
+  return output;
+}
+
 function normalizeRestaurantRecord(raw = {}) {
   const next = { ...raw };
   if (!next.theme || typeof next.theme !== "object") {
@@ -220,6 +285,8 @@ function normalizeRestaurantRecord(raw = {}) {
     defaultLanguage: normalizeLanguageCode(currentDefault),
     languages: normalizeLanguageList(languageSettings.languages, currentDefault)
   };
+  next.uiMessages = sanitizeUiMessages(next.uiMessages);
+  next.categoryLabels = sanitizeCategoryLabels(next.categoryLabels);
   return next;
 }
 
@@ -805,7 +872,9 @@ app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
     languageSettings: {
       defaultLanguage: normalizeLanguageCode(req.body.defaultLanguage),
       languages: normalizeLanguageList(req.body.languages, req.body.defaultLanguage)
-    }
+    },
+    uiMessages: sanitizeUiMessages(req.body.uiMessages),
+    categoryLabels: sanitizeCategoryLabels(req.body.categoryLabels)
   };
   db.restaurants.push(restaurant);
   await writeDb(db);
@@ -871,6 +940,12 @@ app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, re
       (restaurant.languageSettings && restaurant.languageSettings.defaultLanguage) || currentDefaultLanguage
     )
   };
+  if (req.body.uiMessages !== undefined) {
+    restaurant.uiMessages = sanitizeUiMessages(req.body.uiMessages);
+  }
+  if (req.body.categoryLabels !== undefined) {
+    restaurant.categoryLabels = sanitizeCategoryLabels(req.body.categoryLabels);
+  }
   await writeDb(db);
   res.json({ restaurant: normalizeRestaurantRecord(restaurant) });
 });
