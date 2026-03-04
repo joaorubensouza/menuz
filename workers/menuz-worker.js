@@ -471,6 +471,16 @@ function getClientIp(request) {
 }
 
 function getConfig(env) {
+  const captureMinStartFood = Math.max(3, Math.min(20, toInt(env.CAPTURE_MIN_START_FOOD, 6)));
+  const captureMinStartGeneral = Math.max(2, Math.min(20, toInt(env.CAPTURE_MIN_START_GENERAL, 4)));
+  const captureRecommendedFood = Math.max(
+    captureMinStartFood,
+    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_FOOD, 12))
+  );
+  const captureRecommendedGeneral = Math.max(
+    captureMinStartGeneral,
+    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_GENERAL, 8))
+  );
   return {
     tokenTtlMs: toInt(env.TOKEN_TTL_MS, 24 * 60 * 60 * 1000),
     loginWindowMs: toInt(env.LOGIN_WINDOW_MS, 15 * 60 * 1000),
@@ -489,7 +499,11 @@ function getConfig(env) {
     translateMaxTotalChars: Math.max(1, Math.min(30000, toInt(env.TRANSLATE_MAX_TOTAL_CHARS, 6000))),
     qaMinPublishScore: toInt(env.QA_MIN_PUBLISH_SCORE, 70),
     meshyModel: (env.MESHY_AI_MODEL || "meshy-6").toString(),
-    meshyMaxImages: Math.max(1, Math.min(8, toInt(env.MESHY_MAX_REFERENCE_IMAGES, 4)))
+    meshyMaxImages: Math.max(1, Math.min(8, toInt(env.MESHY_MAX_REFERENCE_IMAGES, 4))),
+    captureMinStartFood,
+    captureMinStartGeneral,
+    captureRecommendedFood,
+    captureRecommendedGeneral
   };
 }
 
@@ -752,6 +766,67 @@ function looksLikeFoodItem(item) {
   return foodHints.some((hint) => text.includes(hint));
 }
 
+function getCaptureTargets(config, isFoodItem) {
+  const requiredToStart = isFoodItem
+    ? config.captureMinStartFood
+    : config.captureMinStartGeneral;
+  const recommendedForQuality = Math.max(
+    requiredToStart,
+    isFoodItem ? config.captureRecommendedFood : config.captureRecommendedGeneral
+  );
+  return { requiredToStart, recommendedForQuality };
+}
+
+function evaluateCaptureReadiness(item, job, config) {
+  const referenceCount = Array.isArray(job?.referenceImages) ? job.referenceImages.length : 0;
+  const scanCount = Array.isArray(item?.scans) ? item.scans.length : 0;
+  const heroImageCount = item?.image ? 1 : 0;
+  const isFoodItem = looksLikeFoodItem(item);
+  const targets = getCaptureTargets(config, isFoodItem);
+  const totalVisualInputs = referenceCount + scanCount + heroImageCount;
+  const progress = Math.min(
+    100,
+    Math.round((totalVisualInputs / Math.max(1, targets.recommendedForQuality)) * 100)
+  );
+  const readyToStart = totalVisualInputs >= targets.requiredToStart;
+  const qualityReady = totalVisualInputs >= targets.recommendedForQuality;
+  const hints = [];
+
+  if (!readyToStart) {
+    hints.push(
+      `Capture pelo menos ${targets.requiredToStart} fotos (atual: ${totalVisualInputs}).`
+    );
+  }
+  if (scanCount < Math.ceil(targets.requiredToStart / 2)) {
+    hints.push("Use o scanner para capturar fotos em 360 graus na mesa.");
+  }
+  if (referenceCount < Math.ceil(targets.requiredToStart / 3)) {
+    hints.push("Envie fotos extras no job para cobrir detalhes e evitar malha estourada.");
+  }
+  if (isFoodItem && totalVisualInputs < targets.recommendedForQuality) {
+    hints.push(
+      `Para comida, recomendamos ${targets.recommendedForQuality}+ fotos para realismo de textura.`
+    );
+  }
+  if (qualityReady) {
+    hints.push("Captura forte para pipeline automatico.");
+  }
+
+  return {
+    isFoodItem,
+    referenceCount,
+    scanCount,
+    heroImageCount,
+    totalVisualInputs,
+    requiredToStart: targets.requiredToStart,
+    recommendedForQuality: targets.recommendedForQuality,
+    readyToStart,
+    qualityReady,
+    progress,
+    hints
+  };
+}
+
 function toModelQualityBand(score) {
   if (score >= 85) return "excelente";
   if (score >= 70) return "boa";
@@ -768,24 +843,36 @@ async function inspectUploadedModel(env, urlValue) {
 }
 
 async function evaluateJobQuality(env, item, job) {
+  const config = getConfig(env);
   let score = 0;
   const checklist = [];
-  const referenceCount = Array.isArray(job.referenceImages) ? job.referenceImages.length : 0;
-  const scanCount = Array.isArray(item.scans) ? item.scans.length : 0;
-  const totalRefs = referenceCount + scanCount;
-  const isFood = looksLikeFoodItem(item);
+  const capture = evaluateCaptureReadiness(item, job, config);
+  const totalRefs = capture.totalVisualInputs;
+  const isFood = capture.isFoodItem;
 
-  if (totalRefs >= 12) {
+  if (capture.qualityReady && totalRefs >= capture.recommendedForQuality + 4) {
+    score += 24;
+    checklist.push("captura_fotos:excelente");
+  } else if (capture.qualityReady) {
     score += 20;
     checklist.push("captura_fotos:ok");
-  } else if (totalRefs >= 8) {
-    score += 16;
-    checklist.push("captura_fotos:boa");
-  } else if (totalRefs >= 4) {
-    score += 10;
+  } else if (capture.readyToStart) {
+    score += 14;
     checklist.push("captura_fotos:minima");
+  } else if (totalRefs >= Math.max(1, capture.requiredToStart - 2)) {
+    score += 8;
+    checklist.push("captura_fotos:baixa");
   } else {
     checklist.push("captura_fotos:insuficiente");
+  }
+  if (!capture.readyToStart) {
+    score -= 10;
+  }
+  if (capture.scanCount > 0 && capture.referenceCount > 0) {
+    score += 4;
+    checklist.push("captura_fontes:mista");
+  } else {
+    checklist.push("captura_fontes:unica");
   }
 
   const glbInfo = await inspectUploadedModel(env, job.modelGlb || "");
@@ -821,15 +908,22 @@ async function evaluateJobQuality(env, item, job) {
   }
 
   if (isFood) {
-    if (totalRefs >= 10) {
+    if (totalRefs >= capture.recommendedForQuality) {
       score += 12;
       checklist.push("food_refs:alto");
-    } else if (totalRefs >= 6) {
+    } else if (totalRefs >= capture.requiredToStart) {
       score += 6;
       checklist.push("food_refs:minimo");
     } else {
       score -= 8;
       checklist.push("food_refs:baixo");
+    }
+
+    if (capture.scanCount < 3) {
+      score -= 4;
+      checklist.push("food_angulo_scanner:baixo");
+    } else {
+      checklist.push("food_angulo_scanner:ok");
     }
 
     if (glbInfo.exists && usdzInfo.exists) {
@@ -864,12 +958,18 @@ async function evaluateJobQuality(env, item, job) {
   } else {
     checklist.push("observacoes:curtas");
   }
+  if (Array.isArray(capture.hints) && capture.hints.length > 0) {
+    capture.hints.slice(0, 4).forEach((hint) => {
+      checklist.push(`captura_hint:${sanitizeText(hint, 70)}`);
+    });
+  }
 
   const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
   return {
     score: boundedScore,
     band: toModelQualityBand(boundedScore),
-    checklist
+    checklist,
+    capture
   };
 }
 
@@ -1401,6 +1501,20 @@ async function autoProcessRestaurantJobs(env, restaurantId, options = {}) {
           summary.details.push(detail);
           continue;
         }
+        const capture = evaluateCaptureReadiness(item, job, config);
+        if (!capture.readyToStart) {
+          job.status = "triagem";
+          job.updatedAt = new Date().toISOString();
+          await env.DB.prepare("UPDATE model_jobs SET status = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(job.status, job.updatedAt, job.id)
+            .run();
+          summary.skipped += 1;
+          detail.reason = "capture_insufficient";
+          detail.status = job.status;
+          detail.capture = capture;
+          summary.details.push(detail);
+          continue;
+        }
         const imageInputs = await buildJobImageInputs(env, item, job);
         if (!imageInputs.length) {
           job.status = "triagem";
@@ -1896,7 +2010,17 @@ async function handleApi(request, env, url) {
   }
 
   if (method === "GET" && pathname === "/api/ai/providers") {
-    return json({ providers: getAiProviders(env) });
+    const config = getConfig(env);
+    return json({
+      providers: getAiProviders(env),
+      qa: { minPublishScore: config.qaMinPublishScore },
+      captureGuide: {
+        minStartFood: config.captureMinStartFood,
+        minStartGeneral: config.captureMinStartGeneral,
+        recommendedFood: config.captureRecommendedFood,
+        recommendedGeneral: config.captureRecommendedGeneral
+      }
+    });
   }
 
   if (method === "GET" && pathname === "/api/my-restaurant") {
@@ -2518,6 +2642,10 @@ async function handleApi(request, env, url) {
     const photos = form.getAll("photos").filter((entry) => entry instanceof File);
     if (!photos.length) return json({ error: "photos_required" }, 400);
     if (photos.length > 20) return json({ error: "too_many_files" }, 400);
+    const currentReferenceCount = Array.isArray(job.referenceImages) ? job.referenceImages.length : 0;
+    if (currentReferenceCount + photos.length > 40) {
+      return json({ error: "too_many_reference_images", max: 40 }, 400);
+    }
 
     const urls = [];
     for (const photo of photos) {
@@ -2538,7 +2666,20 @@ async function handleApi(request, env, url) {
       .run();
     job.referenceImages = nextReferenceImages;
     job.updatedAt = nowIso;
-    return json({ urls, count: nextReferenceImages.length, job });
+    const item = await getItemById(env, job.itemId);
+    const capture = item ? evaluateCaptureReadiness(item, job, getConfig(env)) : null;
+    return json({ urls, count: nextReferenceImages.length, job, capture });
+  }
+
+  const captureAnalyzeRoute = method === "GET" && matchRoute("/api/model-jobs/:id/capture/analyze", pathname);
+  if (captureAnalyzeRoute) {
+    const job = await getModelJobById(env, captureAnalyzeRoute.id);
+    if (!job) return json({ error: "job_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, job.restaurantId)) return forbidden();
+    const item = await getItemById(env, job.itemId);
+    if (!item) return json({ error: "item_not_found" }, 404);
+    const capture = evaluateCaptureReadiness(item, job, getConfig(env));
+    return json({ capture });
   }
 
   const updateJobRoute = method === "PUT" && matchRoute("/api/model-jobs/:id", pathname);
@@ -2679,7 +2820,7 @@ async function handleApi(request, env, url) {
       )
       .run();
 
-    return json({ job, evaluation });
+    return json({ job, evaluation, capture: evaluation.capture || null });
   }
 
   const publishJobRoute = method === "POST" && matchRoute("/api/model-jobs/:id/publish", pathname);
@@ -2762,11 +2903,15 @@ async function handleApi(request, env, url) {
     if (!provider) return json({ error: "provider_invalid" }, 400);
     if (!provider.enabled) return json({ error: "provider_not_configured" }, 400);
     if (provider.id !== "meshy") return json({ error: "provider_not_implemented" }, 400);
+    const capture = evaluateCaptureReadiness(item, job, config);
+    if (!capture.readyToStart) {
+      return json({ error: "capture_insufficient", capture }, 400);
+    }
 
     try {
       const imageInputs = await buildJobImageInputs(env, item, job);
       if (!imageInputs.length) return json({ error: "image_source_not_found" }, 400);
-      const aiModel = sanitizeText(body.aiModel || job.aiModel || getConfig(env).meshyModel, 60);
+      const aiModel = sanitizeText(body.aiModel || job.aiModel || config.meshyModel, 60);
       const startResult = await startMeshyImageTo3D(env, imageInputs, {
         aiModel,
         targetPolycount: body.targetPolycount

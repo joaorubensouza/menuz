@@ -44,6 +44,10 @@ const MESHY_API_BASE = "https://api.meshy.ai/openapi/v1";
 const GOOGLE_TRANSLATE_API_BASE = "https://translation.googleapis.com/language/translate/v2";
 const MESHY_DEFAULT_MODEL = process.env.MESHY_AI_MODEL || "meshy-6";
 const MESHY_MAX_REFERENCE_IMAGES = Number(process.env.MESHY_MAX_REFERENCE_IMAGES || 4);
+const CAPTURE_MIN_START_FOOD = Number(process.env.CAPTURE_MIN_START_FOOD || 6);
+const CAPTURE_MIN_START_GENERAL = Number(process.env.CAPTURE_MIN_START_GENERAL || 4);
+const CAPTURE_RECOMMENDED_FOOD = Number(process.env.CAPTURE_RECOMMENDED_FOOD || 12);
+const CAPTURE_RECOMMENDED_GENERAL = Number(process.env.CAPTURE_RECOMMENDED_GENERAL || 8);
 const GOOGLE_TRANSLATE_LANGUAGE_MAP = {
   "pt-BR": "pt",
   "en-US": "en",
@@ -581,6 +585,60 @@ function getAiProvider(providerId) {
   return getAiProviders().find((provider) => provider.id === providerId);
 }
 
+function looksLikeFoodItem(item) {
+  const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
+  const foodHints = [
+    "prato",
+    "massa",
+    "penne",
+    "pizza",
+    "burger",
+    "hamb",
+    "sobremesa",
+    "dessert",
+    "bolo",
+    "cheese",
+    "frango",
+    "carne",
+    "peixe",
+    "salada",
+    "food",
+    "menu"
+  ];
+  return foodHints.some((hint) => text.includes(hint));
+}
+
+function evaluateCaptureReadiness(item, job) {
+  const referenceCount = Array.isArray(job?.referenceImages) ? job.referenceImages.length : 0;
+  const scanCount = Array.isArray(item?.scans) ? item.scans.length : 0;
+  const heroImageCount = item?.image ? 1 : 0;
+  const isFoodItem = looksLikeFoodItem(item);
+  const requiredToStart = isFoodItem ? CAPTURE_MIN_START_FOOD : CAPTURE_MIN_START_GENERAL;
+  const recommendedForQuality = Math.max(
+    requiredToStart,
+    isFoodItem ? CAPTURE_RECOMMENDED_FOOD : CAPTURE_RECOMMENDED_GENERAL
+  );
+  const totalVisualInputs = referenceCount + scanCount + heroImageCount;
+  const progress = Math.min(
+    100,
+    Math.round((totalVisualInputs / Math.max(1, recommendedForQuality)) * 100)
+  );
+  const readyToStart = totalVisualInputs >= requiredToStart;
+  const qualityReady = totalVisualInputs >= recommendedForQuality;
+  return {
+    isFoodItem,
+    referenceCount,
+    scanCount,
+    heroImageCount,
+    totalVisualInputs,
+    requiredToStart,
+    recommendedForQuality,
+    readyToStart,
+    qualityReady,
+    progress
+  };
+}
+
 function urlToUploadFilePath(urlValue) {
   if (!urlValue || !urlValue.startsWith("/uploads/")) return "";
   const relativePath = decodeURIComponent(urlValue.replace(/^\/uploads\//, ""));
@@ -996,7 +1054,16 @@ app.get("/api/me", requireAuth, async (req, res) => {
 });
 
 app.get("/api/ai/providers", requireAuth, async (req, res) => {
-  res.json({ providers: getAiProviders() });
+  res.json({
+    providers: getAiProviders(),
+    qa: { minPublishScore: 70 },
+    captureGuide: {
+      minStartFood: CAPTURE_MIN_START_FOOD,
+      minStartGeneral: CAPTURE_MIN_START_GENERAL,
+      recommendedFood: CAPTURE_RECOMMENDED_FOOD,
+      recommendedGeneral: CAPTURE_RECOMMENDED_GENERAL
+    }
+  });
 });
 
 app.get("/api/my-restaurant", requireAuth, async (req, res) => {
@@ -1364,6 +1431,10 @@ app.post(
     if (files.length === 0) {
       return res.status(400).json({ error: "photos_required" });
     }
+    const currentReferenceCount = Array.isArray(job.referenceImages) ? job.referenceImages.length : 0;
+    if (currentReferenceCount + files.length > 40) {
+      return res.status(400).json({ error: "too_many_reference_images", max: 40 });
+    }
 
     const urls = files.map(
       (file) => `/uploads/job-images/${req.params.id}/${file.filename}`
@@ -1374,9 +1445,29 @@ app.post(
     job.referenceImages.push(...urls);
     job.updatedAt = new Date().toISOString();
     await writeDb(db);
-    res.json({ urls, count: job.referenceImages.length, job });
+    const item = findItem(db, job.itemId);
+    const capture = item ? evaluateCaptureReadiness(item, job) : null;
+    res.json({ urls, count: job.referenceImages.length, job, capture });
   }
 );
+
+app.get("/api/model-jobs/:id/capture/analyze", requireAuth, async (req, res) => {
+  const db = req.db;
+  ensureModelJobs(db);
+  const job = db.modelJobs.find((entry) => entry.id === req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "job_not_found" });
+  }
+  if (!canAccessRestaurant(req.user, job.restaurantId)) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const item = findItem(db, job.itemId);
+  if (!item) {
+    return res.status(404).json({ error: "item_not_found" });
+  }
+  const capture = evaluateCaptureReadiness(item, job);
+  res.json({ capture });
+});
 
 app.post(
   "/api/restaurants/:id/model-jobs",
@@ -1536,6 +1627,10 @@ app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
   }
   if (provider.id !== "meshy") {
     return res.status(400).json({ error: "provider_not_implemented" });
+  }
+  const capture = evaluateCaptureReadiness(item, job);
+  if (!capture.readyToStart) {
+    return res.status(400).json({ error: "capture_insufficient", capture });
   }
 
   try {

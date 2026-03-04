@@ -6,6 +6,15 @@ const state = {
   orders: [],
   modelJobs: [],
   aiProviders: [],
+  aiSettings: {
+    qaMinPublishScore: 70,
+    captureGuide: {
+      minStartFood: 6,
+      minStartGeneral: 4,
+      recommendedFood: 12,
+      recommendedGeneral: 8
+    }
+  },
   activeRestaurant: null,
   scanStream: null,
   scanItemId: null
@@ -46,6 +55,8 @@ const modelJobAuto = document.getElementById("model-job-auto");
 const modelJobImages = document.getElementById("model-job-images");
 const modelJobNotes = document.getElementById("model-job-notes");
 const modelJobMsg = document.getElementById("model-job-msg");
+const captureGuideTarget = document.getElementById("capture-guide-target");
+const captureGuideStats = document.getElementById("capture-guide-stats");
 const modelJobsList = document.getElementById("model-jobs-list");
 const modelJobsCount = document.getElementById("model-jobs-count");
 const modelJobsAuto = document.getElementById("model-jobs-auto");
@@ -170,6 +181,96 @@ function getProviderLabel(providerId) {
   return provider.label || provider.id;
 }
 
+function looksLikeFoodItemClient(item) {
+  const text = `${item?.name || ""} ${item?.description || ""}`.toLowerCase();
+  const foodHints = [
+    "prato",
+    "massa",
+    "penne",
+    "pizza",
+    "burger",
+    "hamb",
+    "sobremesa",
+    "dessert",
+    "bolo",
+    "cheese",
+    "frango",
+    "carne",
+    "peixe",
+    "salada",
+    "food",
+    "menu"
+  ];
+  return foodHints.some((hint) => text.includes(hint));
+}
+
+function getCaptureTargetsClient(item) {
+  const guide = state.aiSettings?.captureGuide || {};
+  const isFoodItem = looksLikeFoodItemClient(item);
+  const requiredToStart = isFoodItem
+    ? Number(guide.minStartFood || 6)
+    : Number(guide.minStartGeneral || 4);
+  const recommendedForQuality = Math.max(
+    requiredToStart,
+    isFoodItem ? Number(guide.recommendedFood || 12) : Number(guide.recommendedGeneral || 8)
+  );
+  return { isFoodItem, requiredToStart, recommendedForQuality };
+}
+
+function evaluateCaptureMetricsClient(item, job = null, pendingUploadCount = 0) {
+  const targets = getCaptureTargetsClient(item);
+  const referenceCount = Array.isArray(job?.referenceImages) ? job.referenceImages.length : 0;
+  const scanCount = Array.isArray(item?.scans) ? item.scans.length : 0;
+  const heroImageCount = item?.image ? 1 : 0;
+  const pendingCount = Math.max(0, Number(pendingUploadCount) || 0);
+  const totalVisualInputs = referenceCount + scanCount + heroImageCount + pendingCount;
+  const readyToStart = totalVisualInputs >= targets.requiredToStart;
+  const qualityReady = totalVisualInputs >= targets.recommendedForQuality;
+  const progress = Math.min(
+    100,
+    Math.round((totalVisualInputs / Math.max(1, targets.recommendedForQuality)) * 100)
+  );
+  return {
+    ...targets,
+    referenceCount,
+    scanCount,
+    heroImageCount,
+    pendingCount,
+    totalVisualInputs,
+    readyToStart,
+    qualityReady,
+    progress
+  };
+}
+
+function captureStatusClass(capture) {
+  if (!capture) return "capture-status-bad";
+  if (capture.qualityReady) return "capture-status-ok";
+  if (capture.readyToStart) return "capture-status-warn";
+  return "capture-status-bad";
+}
+
+function renderCaptureGuidePreview() {
+  if (!captureGuideTarget || !captureGuideStats) return;
+  const item = state.items.find((entry) => entry.id === modelJobItem.value);
+  if (!item) {
+    captureGuideTarget.textContent = "Meta: selecione um prato";
+    captureGuideStats.textContent = "Escolha o prato para validar se a captura esta pronta.";
+    captureGuideStats.className = "muted";
+    return;
+  }
+  const pendingUploadCount = modelJobImages?.files?.length || 0;
+  const capture = evaluateCaptureMetricsClient(item, null, pendingUploadCount);
+  const profileLabel = capture.isFoodItem ? "comida" : "produto";
+  captureGuideTarget.textContent =
+    `Meta ${profileLabel}: ${capture.recommendedForQuality} fotos (min ${capture.requiredToStart})`;
+  captureGuideStats.innerHTML =
+    `Captura atual: <strong>${capture.totalVisualInputs}</strong> ` +
+    `(scanner ${capture.scanCount} + upload ${capture.pendingCount} + capa ${capture.heroImageCount}) · ` +
+    `progresso ${capture.progress}%`;
+  captureGuideStats.className = `muted ${captureStatusClass(capture)}`;
+}
+
 function renderAiProviders() {
   if (!modelJobProvider) return;
   modelJobProvider.innerHTML = "";
@@ -200,9 +301,12 @@ function renderAiProviders() {
     const selected = state.aiProviders.find(
       (provider) => provider.id === modelJobProvider.value
     );
-    aiConfigMsg.textContent = selected
-      ? selected.notes || ""
-      : "Configure um provedor para iniciar testes.";
+    const guide = state.aiSettings?.captureGuide || {};
+    const qaMin = Number(state.aiSettings?.qaMinPublishScore || 70);
+    const providerNotes = selected ? selected.notes || "" : "Configure um provedor para iniciar testes.";
+    aiConfigMsg.textContent =
+      `${providerNotes} QA minimo para publicar: ${qaMin}. ` +
+      `Captura ideal comida: ${Number(guide.recommendedFood || 12)} fotos.`;
   }
   if (modelJobProvider.value === "meshy" && !modelJobAiModel.value) {
     modelJobAiModel.value = "meshy-6";
@@ -261,6 +365,13 @@ function initRestaurantLanguageControls() {
 async function loadAiProviders() {
   try {
     const data = await api("/api/ai/providers");
+    state.aiSettings.qaMinPublishScore = Number(data?.qa?.minPublishScore) || 70;
+    if (data?.captureGuide && typeof data.captureGuide === "object") {
+      state.aiSettings.captureGuide = {
+        ...state.aiSettings.captureGuide,
+        ...data.captureGuide
+      };
+    }
     state.aiProviders = data.providers && data.providers.length
       ? data.providers
       : [
@@ -271,8 +382,9 @@ async function loadAiProviders() {
             supportsAuto: false,
             notes: "Pipeline assistido por voce (scanner + blender)."
           }
-        ];
+    ];
     renderAiProviders();
+    renderCaptureGuidePreview();
   } catch (err) {
     state.aiProviders = [
       {
@@ -284,6 +396,7 @@ async function loadAiProviders() {
       }
     ];
     renderAiProviders();
+    renderCaptureGuidePreview();
   }
 }
 
@@ -293,7 +406,7 @@ async function uploadModelJobReferenceImages(jobId, files) {
   Array.from(files).forEach((file) => {
     form.append("photos", file);
   });
-  await api(`/api/model-jobs/${jobId}/images`, {
+  return api(`/api/model-jobs/${jobId}/images`, {
     method: "POST",
     body: form,
     isForm: true
@@ -523,6 +636,15 @@ modelJobForm.addEventListener("submit", async (event) => {
     modelJobMsg.textContent = "Provedor IA selecionado nao esta habilitado no servidor.";
     return;
   }
+  if (payload.provider === "meshy") {
+    const item = state.items.find((entry) => entry.id === payload.itemId);
+    const capture = evaluateCaptureMetricsClient(item, null, modelJobImages?.files?.length || 0);
+    if (!capture.readyToStart) {
+      modelJobMsg.textContent =
+        `Captura insuficiente para iniciar IA. Minimo: ${capture.requiredToStart} fotos, atual: ${capture.totalVisualInputs}.`;
+      return;
+    }
+  }
   try {
     const created = await api(`/api/restaurants/${state.activeRestaurant.id}/model-jobs`, {
       method: "POST",
@@ -535,9 +657,14 @@ modelJobForm.addEventListener("submit", async (event) => {
     modelJobNotes.value = "";
     modelJobAuto.checked = false;
     modelJobMsg.textContent = "Job adicionado na fila 3D.";
+    renderCaptureGuidePreview();
     await loadModelJobs(state.activeRestaurant.id);
   } catch (err) {
-    modelJobMsg.textContent = "Erro ao criar job da fila.";
+    if (err.message === "too_many_reference_images") {
+      modelJobMsg.textContent = "Limite atingido: maximo de 40 fotos por job.";
+    } else {
+      modelJobMsg.textContent = "Erro ao criar job da fila.";
+    }
   }
 });
 
@@ -608,7 +735,11 @@ if (modelJobProvider) {
     const provider = state.aiProviders.find((entry) => entry.id === modelJobProvider.value);
     if (!provider) return;
     if (aiConfigMsg) {
-      aiConfigMsg.textContent = provider.notes || "";
+      const guide = state.aiSettings?.captureGuide || {};
+      const qaMin = Number(state.aiSettings?.qaMinPublishScore || 70);
+      aiConfigMsg.textContent =
+        `${provider.notes || ""} QA minimo para publicar: ${qaMin}. ` +
+        `Captura ideal comida: ${Number(guide.recommendedFood || 12)} fotos.`;
     }
     if (provider.id === "meshy" && !modelJobAiModel.value) {
       modelJobAiModel.value = "meshy-6";
@@ -616,6 +747,25 @@ if (modelJobProvider) {
     if (!provider.supportsAuto) {
       modelJobAuto.checked = false;
     }
+    renderCaptureGuidePreview();
+  });
+}
+
+if (modelJobItem) {
+  modelJobItem.addEventListener("change", () => {
+    renderCaptureGuidePreview();
+  });
+}
+
+if (modelJobSource) {
+  modelJobSource.addEventListener("change", () => {
+    renderCaptureGuidePreview();
+  });
+}
+
+if (modelJobImages) {
+  modelJobImages.addEventListener("change", () => {
+    renderCaptureGuidePreview();
   });
 }
 
@@ -803,6 +953,7 @@ function renderItems() {
     itemsList.appendChild(row);
   });
   populateModelJobItems();
+  renderCaptureGuidePreview();
 }
 
 function renderModelJobs() {
@@ -829,6 +980,7 @@ function renderModelJobs() {
     const referenceCount = Array.isArray(job.referenceImages)
       ? job.referenceImages.length
       : 0;
+    const capture = evaluateCaptureMetricsClient(item || {}, job, 0);
     const qaScore = Number(job.qaScore) || 0;
     const qaBand = (job.qaBand || "fraca").toString();
     const qaChecklist = Array.isArray(job.qaChecklist) ? job.qaChecklist : [];
@@ -841,6 +993,10 @@ function renderModelJobs() {
         <div class="muted">${sourceLabel} - ${job.autoMode ? "automatico" : "assistido"}</div>
         <div class="muted">Provedor: ${providerLabel} (${providerStatus})</div>
         <div class="muted">Fotos referencia: ${referenceCount}</div>
+        <div class="muted ${captureStatusClass(capture)}">
+          Captura: ${capture.totalVisualInputs}/${capture.recommendedForQuality}
+          (min ${capture.requiredToStart})
+        </div>
         <div class="muted">QA: ${qaScore}/100 (${qaBand})</div>
         <div class="muted">Checklist: ${qaChecklist.slice(0, 3).join(" | ") || "pendente"}</div>
         <div class="muted">Atualizado: ${updatedAt}</div>
@@ -884,6 +1040,7 @@ function renderModelJobs() {
         <div class="table-actions">
           <button class="btn btn-outline" data-action="ai-start">Rodar IA</button>
           <button class="btn btn-outline" data-action="ai-sync">Sincronizar</button>
+          <button class="btn btn-outline" data-action="capture-analyze">Checar captura</button>
           <button class="btn btn-outline" data-action="qa-evaluate">Avaliar QA</button>
           <button class="btn" data-action="publish-job">Publicar</button>
           <button class="btn btn-outline" data-action="delete-job">Excluir job</button>
@@ -903,6 +1060,7 @@ function renderModelJobs() {
     const saveButton = row.querySelector("[data-action='save']");
     const aiStartButton = row.querySelector("[data-action='ai-start']");
     const aiSyncButton = row.querySelector("[data-action='ai-sync']");
+    const captureAnalyzeButton = row.querySelector("[data-action='capture-analyze']");
     const qaEvaluateButton = row.querySelector("[data-action='qa-evaluate']");
     const publishJobButton = row.querySelector("[data-action='publish-job']");
     const deleteJobButton = row.querySelector("[data-action='delete-job']");
@@ -945,7 +1103,12 @@ function renderModelJobs() {
         modelJobMsg.textContent = "Processamento IA iniciado.";
         await loadModelJobs(state.activeRestaurant.id);
       } catch (err) {
-        modelJobMsg.textContent = "Falha ao iniciar geracao IA para este job.";
+        if (err.message === "capture_insufficient") {
+          modelJobMsg.textContent =
+            "Captura insuficiente para iniciar IA. Adicione mais fotos neste job.";
+        } else {
+          modelJobMsg.textContent = "Falha ao iniciar geracao IA para este job.";
+        }
       } finally {
         aiStartButton.disabled = false;
       }
@@ -966,6 +1129,26 @@ function renderModelJobs() {
         modelJobMsg.textContent = "Falha ao sincronizar resultado IA deste job.";
       } finally {
         aiSyncButton.disabled = false;
+      }
+    });
+
+    captureAnalyzeButton.addEventListener("click", async () => {
+      captureAnalyzeButton.disabled = true;
+      modelJobMsg.textContent = "";
+      try {
+        const data = await api(`/api/model-jobs/${job.id}/capture/analyze`);
+        const captureData = data.capture || capture;
+        modelJobMsg.textContent =
+          `Captura ${captureData.totalVisualInputs}/${captureData.recommendedForQuality} ` +
+          `(min ${captureData.requiredToStart}). ` +
+          (captureData.readyToStart
+            ? "Pronto para IA."
+            : "Ainda insuficiente para iniciar IA.");
+        await loadModelJobs(state.activeRestaurant.id);
+      } catch (err) {
+        modelJobMsg.textContent = "Falha ao analisar captura do job.";
+      } finally {
+        captureAnalyzeButton.disabled = false;
       }
     });
 
@@ -1021,7 +1204,11 @@ function renderModelJobs() {
         input.value = "";
         await loadModelJobs(state.activeRestaurant.id);
       } catch (err) {
-        modelJobMsg.textContent = "Falha ao enviar fotos para o job.";
+        if (err.message === "too_many_reference_images") {
+          modelJobMsg.textContent = "Limite atingido: maximo de 40 fotos por job.";
+        } else {
+          modelJobMsg.textContent = "Falha ao enviar fotos para o job.";
+        }
       } finally {
         uploadImagesButton.disabled = false;
       }
@@ -1597,4 +1784,5 @@ function stopScanner() {
 initThemeSelector();
 initRestaurantLanguageControls();
 initLizzChatbot();
+renderCaptureGuidePreview();
 init();
