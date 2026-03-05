@@ -7,224 +7,318 @@
     <link rel="stylesheet" href="/site.css" />
   </head>
   <body class="site site-home">
-    <div class="container">
-      <nav class="nav">
-        <div class="brand">Menuz <span>AR MENU</span></div>
-        <div class="row">
-          <label class="theme-picker" for="theme-select">
-            <span>Paleta</span>
-            <select id="theme-select">
-              <option value="amber">Amber</option>
-              <option value="ocean">Ocean</option>
-              <option value="wine">Wine</option>
-            </select>
-          </label>
-          <button class="btn btn-outline" id="manage-toggle" type="button">
-            Area do restaurante
-          </button>
-        </div>
-      </nav>
+    <section class="intro-stage" id="intro-stage">
+      <div class="intro-container">
+        <header class="intro-topbar">
+          <div class="intro-brand">Menuz <span>AR MENU</span></div>
+          <button class="btn intro-primary" type="button" data-intro-start>Iniciar</button>
+        </header>
 
-      <section class="hero-shell">
-        <div class="hero hero-business">
-          <div class="hero-copy">
-            <div class="badge">Plataforma visual para restaurantes</div>
-            <h1>Uma primeira impressao premium que converte mesas em pedidos.</h1>
+        <section class="intro-hero">
+          <div class="intro-copy">
+            <div class="intro-kicker">Apresentacao visual</div>
+            <h1>Uma experiencia premium antes do cliente entrar no cardapio.</h1>
             <p>
-              Entrega uma experiencia moderna na mesa: cardapio lindo, visualizacao em AR
-              e pedido digital no mesmo fluxo. Sem app para o cliente instalar.
+              Mostre valor primeiro. Em seguida, com um clique em iniciar, o cliente
+              entra na tela de restaurante para navegar e pedir.
             </p>
-            <div class="hero-pills">
-              <span class="hero-pill">Sem app</span>
-              <span class="hero-pill">QR por mesa</span>
-              <span class="hero-pill">3D com IA</span>
-              <span class="hero-pill">Pronto para franquias</span>
-            </div>
             <div class="row">
-              <button class="btn" id="cta-menu">Comecar agora</button>
-              <button class="btn btn-outline" id="cta-demo">Ver demo AR</button>
-            </div>
-            <div class="hero-proof">
-              <strong>+27%</strong>
-              <span>media de aumento de interesse em pratos com visualizacao AR</span>
-            </div>
-          </div>
-          <aside class="hero-visual">
-            <article class="hero-media hero-media-main">
-              <div class="media-chip">Imagem hero IA</div>
-              <h3>Mostre o prato antes do cliente decidir.</h3>
-              <p>Espaco pronto para sua imagem principal em alta qualidade.</p>
-            </article>
-            <div class="hero-media-grid">
-              <article class="hero-media">
-                <div class="media-chip">Imagem IA 02</div>
-                <p>Mockup de cardapio no celular.</p>
-              </article>
-              <article class="hero-media">
-                <div class="media-chip">Imagem IA 03</div>
-                <p>Cena de AR no ambiente do restaurante.</p>
-              </article>
-            </div>
-            <div class="hero-card">
-              <span>Tempo de ativacao</span>
-              <strong>1 dia util</strong>
-            </div>
-            <div class="hero-card">
-              <span>Modelo comercial</span>
-              <strong>B2B multiunidade</strong>
-            </div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="section" id="gate-section">
-        <div class="gate-layout">
-          <div class="panel">
-            <div class="tag">Acesso rapido</div>
-            <h3>Abra o cardapio do restaurante</h3>
-            <p class="muted">
-              Use o QR da mesa ou digite o codigo do restaurante para iniciar uma
-              experiencia de pedido com AR.
-            </p>
-            <div class="form-row" style="margin-top: 12px;">
-              <input class="input" id="code-input" placeholder="codigo do restaurante" />
-              <button class="btn" id="code-button" type="button">Abrir cardapio</button>
-            </div>
-            <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
-            <div class="form-row" style="margin-top: 12px;">
-              <select class="input" id="restaurant-select">
-                <option value="">Selecione um restaurante</option>
-              </select>
-              <button class="btn btn-outline" id="restaurant-open-button" type="button">
-                Abrir cardapio
+              <button class="btn intro-primary" type="button" data-intro-start>
+                Iniciar experiencia
               </button>
             </div>
-            <div class="muted" id="code-error" style="margin-top: 8px;"></div>
           </div>
-          <aside class="panel">
-            <div class="tag">Diferenciais comerciais</div>
-            <div class="trust-list" style="margin-top: 10px;">
-              <div class="trust-item">
-                <strong>Mais ticket medio</strong>
-                <p class="muted">O cliente enxerga melhor o prato antes de pedir.</p>
-              </div>
-              <div class="trust-item">
-                <strong>Operacao simples</strong>
-                <p class="muted">Painel unico para menu, pedidos e fila 3D.</p>
-              </div>
-              <div class="trust-item">
-                <strong>Escalavel</strong>
-                <p class="muted">Pronto para multiplas unidades e equipes.</p>
-              </div>
+          <aside class="intro-art">
+            <article class="intro-art-main">
+              <span>Espaco visual hero</span>
+              <strong>Imagem principal do cliente</strong>
+            </article>
+            <div class="intro-art-grid">
+              <article class="intro-art-item">
+                <span>Imagem 02</span>
+                <p>Mockup de uso no celular</p>
+              </article>
+              <article class="intro-art-item">
+                <span>Imagem 03</span>
+                <p>Cena real no restaurante</p>
+              </article>
             </div>
           </aside>
-        </div>
-      </section>
+        </section>
 
-      <section class="section">
-        <div class="section-title">
-          <h2>Impacto no negocio</h2>
-          <span class="badge">Dados de produto</span>
-        </div>
-        <div class="proof-grid">
-          <article class="proof-card">
-            <strong>+22%</strong>
-            <p class="muted">mais abertura de prato com AR no menu.</p>
-          </article>
-          <article class="proof-card">
-            <strong>3x mais rapido</strong>
-            <p class="muted">para decidir pedido com visualizacao realista.</p>
-          </article>
-          <article class="proof-card">
-            <strong>Funil completo</strong>
-            <p class="muted">menu -> AR -> pedido com analytics por restaurante.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="section-title">
-          <h2>Ativacao em 1 dia</h2>
-          <span class="badge">Processo simples</span>
-        </div>
-        <div class="proof-grid">
-          <article class="proof-card">
-            <strong>1</strong>
-            <p class="muted">Cadastre o restaurante e seus pratos no painel.</p>
-          </article>
-          <article class="proof-card">
-            <strong>2</strong>
-            <p class="muted">Suba 20 fotos por prato para melhor qualidade 3D.</p>
-          </article>
-          <article class="proof-card">
-            <strong>3</strong>
-            <p class="muted">Automacao publica no menu quando o QA atingir o nivel ideal.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section hidden" id="manage-section">
-        <div class="panel" style="max-width: 620px;">
-          <div class="tag">Area do restaurante</div>
-          <h3>Entrar para gerenciar</h3>
-          <p class="muted">
-            Use seu email e senha para abrir o painel com pedidos, analytics e fila 3D.
-          </p>
-          <form class="form-grid" id="quick-login-form" style="margin-top: 12px;">
-            <input class="input" type="email" id="quick-login-email" placeholder="Email" required />
-            <input class="input" type="password" id="quick-login-password" placeholder="Senha" required />
-            <button class="btn" type="submit">Entrar no painel</button>
-            <div class="muted" id="quick-login-msg"></div>
-          </form>
-        </div>
-      </section>
-
-      <section class="section hidden" id="menu-section">
-        <div class="section-title">
-          <h2 id="menu-title">Menu</h2>
-          <span class="muted" id="menu-subtitle"></span>
-        </div>
-        <div class="menu-toolbar">
-          <input
-            class="input menu-search"
-            id="menu-search"
-            type="search"
-            placeholder="Buscar prato por nome ou descricao"
-          />
-          <div class="menu-categories" id="menu-categories"></div>
-        </div>
-        <div class="muted hidden" id="menu-filter-empty">
-          Nenhum item encontrado com esse filtro. Tente outro termo.
-        </div>
-        <div class="card-grid" id="menu-list"></div>
-      </section>
-    </div>
-
-    <div class="order-bar hidden" id="order-bar">
-      <div>
-        <div class="tag">Seu pedido</div>
-        <div id="order-summary"></div>
-      </div>
-      <button class="btn" id="order-open">Finalizar pedido</button>
-    </div>
-
-    <div class="order-modal hidden" id="order-modal">
-      <div class="order-content">
-        <div class="row" style="justify-content: space-between;">
-          <div>
-            <div class="tag">Pedido</div>
-            <h3>Revise antes de enviar</h3>
+        <section class="intro-section intro-light">
+          <h2>Sempre no radar do cliente.</h2>
+          <div class="intro-slider-card">
+            <div>
+              <strong>Mostre seu produto com impacto visual imediato.</strong>
+              <p>
+                Layout em blocos grandes para comunicar valor sem cansar quem esta navegando.
+              </p>
+              <button class="btn intro-primary" type="button" data-intro-start>Iniciar</button>
+            </div>
+            <div class="intro-phone-mock">Imagem em destaque</div>
           </div>
-          <button class="btn btn-outline" id="order-close">Fechar</button>
+        </section>
+
+        <section class="intro-section intro-soft">
+          <h2>Prova social que passa confianca.</h2>
+          <article class="intro-testimonial-card">
+            <div class="intro-stars">★★★★★</div>
+            <p>
+              "A apresentacao ficou muito mais clara para o cliente final, e a taxa de pedido aumentou."
+            </p>
+            <div class="intro-testimonial-user">Cliente real do restaurante</div>
+          </article>
+        </section>
+
+        <section class="intro-section intro-white">
+          <h2>Ajude o cliente a decidir rapido.</h2>
+          <div class="intro-phones-grid">
+            <div class="intro-phone">Tela 1</div>
+            <div class="intro-phone">Tela 2</div>
+            <div class="intro-phone">Tela 3</div>
+          </div>
+          <p class="intro-note">
+            Depois dessa apresentacao, ao clicar em iniciar, abrimos a tela completa de restaurante.
+          </p>
+        </section>
+
+        <section class="intro-section intro-dark">
+          <div class="intro-benefits">
+            <h3>Resumo comercial</h3>
+            <ul>
+              <li>Visual premium em todas as unidades</li>
+              <li>Fluxo simples para o cliente final</li>
+              <li>Entrada direta para tela de restaurante</li>
+            </ul>
+            <button class="btn intro-primary" type="button" data-intro-start>
+              Iniciar agora
+            </button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <div id="experience-stage" class="hidden">
+      <div class="container">
+        <nav class="nav">
+          <div class="brand">Menuz <span>AR MENU</span></div>
+          <div class="row">
+            <label class="theme-picker" for="theme-select">
+              <span>Paleta</span>
+              <select id="theme-select">
+                <option value="amber">Amber</option>
+                <option value="ocean">Ocean</option>
+                <option value="wine">Wine</option>
+              </select>
+            </label>
+            <button class="btn btn-outline" id="manage-toggle" type="button">
+              Area do restaurante
+            </button>
+          </div>
+        </nav>
+
+        <section class="hero-shell">
+          <div class="hero hero-business">
+            <div class="hero-copy">
+              <div class="badge">Plataforma visual para restaurantes</div>
+              <h1>Uma primeira impressao premium que converte mesas em pedidos.</h1>
+              <p>
+                Entrega uma experiencia moderna na mesa: cardapio lindo, visualizacao em AR
+                e pedido digital no mesmo fluxo. Sem app para o cliente instalar.
+              </p>
+              <div class="hero-pills">
+                <span class="hero-pill">Sem app</span>
+                <span class="hero-pill">QR por mesa</span>
+                <span class="hero-pill">3D com IA</span>
+                <span class="hero-pill">Pronto para franquias</span>
+              </div>
+              <div class="row">
+                <button class="btn" id="cta-menu">Comecar agora</button>
+                <button class="btn btn-outline" id="cta-demo">Ver demo AR</button>
+              </div>
+              <div class="hero-proof">
+                <strong>+27%</strong>
+                <span>media de aumento de interesse em pratos com visualizacao AR</span>
+              </div>
+            </div>
+            <aside class="hero-visual">
+              <article class="hero-media hero-media-main">
+                <div class="media-chip">Imagem hero IA</div>
+                <h3>Mostre o prato antes do cliente decidir.</h3>
+                <p>Espaco pronto para sua imagem principal em alta qualidade.</p>
+              </article>
+              <div class="hero-media-grid">
+                <article class="hero-media">
+                  <div class="media-chip">Imagem IA 02</div>
+                  <p>Mockup de cardapio no celular.</p>
+                </article>
+                <article class="hero-media">
+                  <div class="media-chip">Imagem IA 03</div>
+                  <p>Cena de AR no ambiente do restaurante.</p>
+                </article>
+              </div>
+              <div class="hero-card">
+                <span>Tempo de ativacao</span>
+                <strong>1 dia util</strong>
+              </div>
+              <div class="hero-card">
+                <span>Modelo comercial</span>
+                <strong>B2B multiunidade</strong>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="section" id="gate-section">
+          <div class="gate-layout">
+            <div class="panel">
+              <div class="tag">Acesso rapido</div>
+              <h3>Abra o cardapio do restaurante</h3>
+              <p class="muted">
+                Use o QR da mesa ou digite o codigo do restaurante para iniciar uma
+                experiencia de pedido com AR.
+              </p>
+              <div class="form-row" style="margin-top: 12px;">
+                <input class="input" id="code-input" placeholder="codigo do restaurante" />
+                <button class="btn" id="code-button" type="button">Abrir cardapio</button>
+              </div>
+              <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
+              <div class="form-row" style="margin-top: 12px;">
+                <select class="input" id="restaurant-select">
+                  <option value="">Selecione um restaurante</option>
+                </select>
+                <button class="btn btn-outline" id="restaurant-open-button" type="button">
+                  Abrir cardapio
+                </button>
+              </div>
+              <div class="muted" id="code-error" style="margin-top: 8px;"></div>
+            </div>
+            <aside class="panel">
+              <div class="tag">Diferenciais comerciais</div>
+              <div class="trust-list" style="margin-top: 10px;">
+                <div class="trust-item">
+                  <strong>Mais ticket medio</strong>
+                  <p class="muted">O cliente enxerga melhor o prato antes de pedir.</p>
+                </div>
+                <div class="trust-item">
+                  <strong>Operacao simples</strong>
+                  <p class="muted">Painel unico para menu, pedidos e fila 3D.</p>
+                </div>
+                <div class="trust-item">
+                  <strong>Escalavel</strong>
+                  <p class="muted">Pronto para multiplas unidades e equipes.</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h2>Impacto no negocio</h2>
+            <span class="badge">Dados de produto</span>
+          </div>
+          <div class="proof-grid">
+            <article class="proof-card">
+              <strong>+22%</strong>
+              <p class="muted">mais abertura de prato com AR no menu.</p>
+            </article>
+            <article class="proof-card">
+              <strong>3x mais rapido</strong>
+              <p class="muted">para decidir pedido com visualizacao realista.</p>
+            </article>
+            <article class="proof-card">
+              <strong>Funil completo</strong>
+              <p class="muted">menu -> AR -> pedido com analytics por restaurante.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h2>Ativacao em 1 dia</h2>
+            <span class="badge">Processo simples</span>
+          </div>
+          <div class="proof-grid">
+            <article class="proof-card">
+              <strong>1</strong>
+              <p class="muted">Cadastre o restaurante e seus pratos no painel.</p>
+            </article>
+            <article class="proof-card">
+              <strong>2</strong>
+              <p class="muted">Suba 20 fotos por prato para melhor qualidade 3D.</p>
+            </article>
+            <article class="proof-card">
+              <strong>3</strong>
+              <p class="muted">Automacao publica no menu quando o QA atingir o nivel ideal.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="section hidden" id="manage-section">
+          <div class="panel" style="max-width: 620px;">
+            <div class="tag">Area do restaurante</div>
+            <h3>Entrar para gerenciar</h3>
+            <p class="muted">
+              Use seu email e senha para abrir o painel com pedidos, analytics e fila 3D.
+            </p>
+            <form class="form-grid" id="quick-login-form" style="margin-top: 12px;">
+              <input class="input" type="email" id="quick-login-email" placeholder="Email" required />
+              <input class="input" type="password" id="quick-login-password" placeholder="Senha" required />
+              <button class="btn" type="submit">Entrar no painel</button>
+              <div class="muted" id="quick-login-msg"></div>
+            </form>
+          </div>
+        </section>
+
+        <section class="section hidden" id="menu-section">
+          <div class="section-title">
+            <h2 id="menu-title">Menu</h2>
+            <span class="muted" id="menu-subtitle"></span>
+          </div>
+          <div class="menu-toolbar">
+            <input
+              class="input menu-search"
+              id="menu-search"
+              type="search"
+              placeholder="Buscar prato por nome ou descricao"
+            />
+            <div class="menu-categories" id="menu-categories"></div>
+          </div>
+          <div class="muted hidden" id="menu-filter-empty">
+            Nenhum item encontrado com esse filtro. Tente outro termo.
+          </div>
+          <div class="card-grid" id="menu-list"></div>
+      </section>
+      </div>
+
+      <div class="order-bar hidden" id="order-bar">
+        <div>
+          <div class="tag">Seu pedido</div>
+          <div id="order-summary"></div>
         </div>
-        <div class="divider"></div>
-        <div id="order-items"></div>
-        <div class="divider"></div>
-        <div class="form-row">
-          <input class="input" id="order-table" placeholder="Mesa (ex: 12)" />
-          <button class="btn" id="order-submit">Enviar pedido</button>
+        <button class="btn" id="order-open">Finalizar pedido</button>
+      </div>
+
+      <div class="order-modal hidden" id="order-modal">
+        <div class="order-content">
+          <div class="row" style="justify-content: space-between;">
+            <div>
+              <div class="tag">Pedido</div>
+              <h3>Revise antes de enviar</h3>
+            </div>
+            <button class="btn btn-outline" id="order-close">Fechar</button>
+          </div>
+          <div class="divider"></div>
+          <div id="order-items"></div>
+          <div class="divider"></div>
+          <div class="form-row">
+            <input class="input" id="order-table" placeholder="Mesa (ex: 12)" />
+            <button class="btn" id="order-submit">Enviar pedido</button>
+          </div>
+          <div class="muted" id="order-message" style="margin-top: 8px;"></div>
         </div>
-        <div class="muted" id="order-message" style="margin-top: 8px;"></div>
       </div>
     </div>
 

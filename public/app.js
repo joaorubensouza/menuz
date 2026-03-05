@@ -20,6 +20,9 @@ const manageSection = document.getElementById("manage-section");
 const quickLoginForm = document.getElementById("quick-login-form");
 const quickLoginMsg = document.getElementById("quick-login-msg");
 const themeSelect = document.getElementById("theme-select");
+const introStage = document.getElementById("intro-stage");
+const experienceStage = document.getElementById("experience-stage");
+const introStartButtons = document.querySelectorAll("[data-intro-start]");
 
 const menuSection = document.getElementById("menu-section");
 const menuList = document.getElementById("menu-list");
@@ -178,6 +181,46 @@ async function api(url, options = {}) {
 
 function navigateToRestaurantSlug(slugValue) {
   window.location.href = `/r/${encodeURIComponent(slugValue)}`;
+}
+
+function showIntroStage() {
+  if (introStage) {
+    introStage.classList.remove("hidden");
+  }
+  if (experienceStage) {
+    experienceStage.classList.add("hidden");
+  }
+}
+
+function showExperienceStage(smoothScroll = false) {
+  if (introStage) {
+    introStage.classList.add("hidden");
+  }
+  if (experienceStage) {
+    experienceStage.classList.remove("hidden");
+  }
+  if (smoothScroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  window.scrollTo(0, 0);
+}
+
+function initStageFlow() {
+  if (introStartButtons.length) {
+    introStartButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        showExperienceStage(true);
+      });
+    });
+  }
+
+  if (slug) {
+    showExperienceStage(false);
+    return;
+  }
+
+  showIntroStage();
 }
 
 if (ctaMenu) {
@@ -846,6 +889,7 @@ async function loadMenu(slugValue) {
 }
 
 initTheme();
+initStageFlow();
 
 if (slug) {
   loadMenu(slug);
