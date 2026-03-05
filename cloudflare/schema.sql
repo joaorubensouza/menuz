@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   description TEXT DEFAULT '',
   logo TEXT DEFAULT '',
   accent TEXT DEFAULT '#D95F2B',
-  template TEXT DEFAULT 'default',
+  template TEXT DEFAULT 'topo-do-mundo',
   hero_images_json TEXT DEFAULT '[]',
   contact_address TEXT DEFAULT '',
   contact_phone TEXT DEFAULT '',

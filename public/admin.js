@@ -868,7 +868,7 @@ function renderRestaurants() {
     card.innerHTML = `
       <div class="badge">${restaurant.slug}</div>
       <h3 style="margin: 10px 0 6px;">${restaurant.name}</h3>
-      <p class="muted">Template: ${restaurant.template || "default"}</p>
+      <p class="muted">Template: ${restaurant.template || "topo-do-mundo"}</p>
       <p class="muted">${restaurant.description || ""}</p>
       <div class="row" style="margin-top: 12px;">
         <button class="btn" data-id="${restaurant.id}">Gerenciar</button>
@@ -889,7 +889,7 @@ function fillRestaurantForm(restaurant) {
   document.getElementById("edit-logo").value = restaurant.logo || "";
   document.getElementById("edit-accent").value =
     (restaurant.theme && restaurant.theme.accent) || "";
-  document.getElementById("edit-template").value = restaurant.template || "default";
+  document.getElementById("edit-template").value = restaurant.template || "topo-do-mundo";
   const contact = restaurant.contact || {};
   const languageSettings = restaurant.languageSettings || {};
   document.getElementById("edit-contact-address").value = contact.address || "";

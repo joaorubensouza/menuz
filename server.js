@@ -73,6 +73,8 @@ const AI_ACTION_MAX_PER_WINDOW = Number(process.env.AI_ACTION_MAX_PER_WINDOW || 
 const PUBLIC_EVENT_WINDOW_MS = Number(process.env.PUBLIC_EVENT_WINDOW_MS || 5 * 60 * 1000);
 const PUBLIC_EVENT_MAX_PER_WINDOW = Number(process.env.PUBLIC_EVENT_MAX_PER_WINDOW || 200);
 const QA_MIN_PUBLISH_SCORE = Number(process.env.QA_MIN_PUBLISH_SCORE || 70);
+const DEFAULT_PUBLIC_TEMPLATE = "topo-do-mundo";
+const TEMPLATE_NAME_PATTERN = /^[a-z0-9-]{1,60}$/;
 
 const tokens = new Map();
 const loginAttempts = new Map();
@@ -233,6 +235,18 @@ function normalizeSlug(text) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+function sanitizeTemplateName(value) {
+  const raw = (value || "").toString().trim().toLowerCase();
+  if (!raw || raw === "default") return DEFAULT_PUBLIC_TEMPLATE;
+  if (!TEMPLATE_NAME_PATTERN.test(raw)) return DEFAULT_PUBLIC_TEMPLATE;
+  return raw;
+}
+
+function resolveRestaurantTemplatePath(templateName) {
+  const safeTemplate = sanitizeTemplateName(templateName);
+  return `/templates/${safeTemplate}.html`;
 }
 
 function normalizeLanguageCode(value) {
@@ -531,6 +545,7 @@ function normalizeRestaurantRecord(raw = {}) {
   };
   next.uiMessages = sanitizeUiMessages(next.uiMessages);
   next.categoryLabels = sanitizeCategoryLabels(next.categoryLabels);
+  next.template = sanitizeTemplateName(next.template);
   return next;
 }
 
@@ -1430,14 +1445,20 @@ app.get("/r/:slug", async (req, res) => {
   try {
     const db = await readDb();
     const restaurant = db.restaurants.find((r) => r.slug === safeSlug);
-    if (restaurant && restaurant.template === "topo-do-mundo") {
-      return res.redirect(`/templates/topo-do-mundo.html?${params.toString()}`);
+    if (restaurant) {
+      let templatePath = resolveRestaurantTemplatePath(restaurant.template);
+      const localTemplatePath = path.join(PUBLIC_DIR, templatePath.replace(/^\//, ""));
+      if (!fsSync.existsSync(localTemplatePath)) {
+        templatePath = resolveRestaurantTemplatePath(DEFAULT_PUBLIC_TEMPLATE);
+      }
+      return res.redirect(`${templatePath}?${params.toString()}`);
     }
   } catch (err) {
     // Fallback to default menu page if DB read fails.
   }
 
-  res.redirect(`/?${params.toString()}`);
+  const fallbackTemplate = resolveRestaurantTemplatePath(DEFAULT_PUBLIC_TEMPLATE);
+  res.redirect(`${fallbackTemplate}?${params.toString()}`);
 });
 
 app.get("/i/:id", (req, res) => {
@@ -1478,7 +1499,7 @@ app.get("/api/public/restaurants", async (req, res) => {
       slug: restaurant.slug,
       description: restaurant.description || "",
       logo: restaurant.logo || "",
-      template: restaurant.template || "default",
+      template: sanitizeTemplateName(restaurant.template),
       itemCount: itemCounts.get(restaurant.id) || 0
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -1700,7 +1721,7 @@ app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
     description: description || "",
     logo: sanitizeNullableUrl(req.body.logo),
     theme: { accent: sanitizeText(req.body.accent, 16) || "#D95F2B" },
-    template: sanitizeText(req.body.template || "default", 60) || "default",
+    template: sanitizeTemplateName(req.body.template || DEFAULT_PUBLIC_TEMPLATE),
     contact: {
       address: sanitizeText(req.body.contactAddress || req.body.address, 220),
       phone: sanitizeText(req.body.contactPhone || req.body.phone, 80),
@@ -1743,7 +1764,7 @@ app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, re
     restaurant.theme.accent = sanitizeText(req.body.accent, 16) || restaurant.theme.accent || "#D95F2B";
   }
   if (req.body.template !== undefined) {
-    restaurant.template = sanitizeText(req.body.template || "default", 60) || "default";
+    restaurant.template = sanitizeTemplateName(req.body.template || DEFAULT_PUBLIC_TEMPLATE);
   }
   if (req.body.contactAddress !== undefined || req.body.address !== undefined) {
     restaurant.contact = restaurant.contact || {};

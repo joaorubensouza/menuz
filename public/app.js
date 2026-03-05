@@ -2,6 +2,8 @@ const params = new URLSearchParams(window.location.search);
 const slug = params.get("r");
 const tableParam = params.get("mesa") || "";
 const THEME_KEY = "menuz_theme";
+const DEFAULT_PUBLIC_TEMPLATE = "topo-do-mundo";
+const TEMPLATE_NAME_PATTERN = /^[a-z0-9-]{1,60}$/;
 const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL"
@@ -584,6 +586,17 @@ function buildItemUrl(itemId) {
   return `/item.html?${itemParams.toString()}`;
 }
 
+function sanitizeTemplateName(value) {
+  const raw = (value || "").toString().trim().toLowerCase();
+  if (!raw || raw === "default") return DEFAULT_PUBLIC_TEMPLATE;
+  if (!TEMPLATE_NAME_PATTERN.test(raw)) return DEFAULT_PUBLIC_TEMPLATE;
+  return raw;
+}
+
+function resolveRestaurantTemplatePath(templateName) {
+  return `/templates/${sanitizeTemplateName(templateName)}.html`;
+}
+
 function resetMenuFilters() {
   menuSearchTerm = "";
   menuActiveCategory = "__all__";
@@ -785,15 +798,15 @@ async function loadMenu(slugValue) {
     const data = await res.json();
     const restaurant = data.restaurant || {};
     const items = Array.isArray(data.items) ? data.items : [];
-    if (restaurant.template === "topo-do-mundo") {
-      const templateParams = new URLSearchParams(window.location.search);
-      templateParams.set("r", slugValue);
-      if (tableParam) {
-        templateParams.set("mesa", tableParam);
-      }
-      window.location.replace(`/templates/topo-do-mundo.html?${templateParams.toString()}`);
-      return;
+    const templateParams = new URLSearchParams(window.location.search);
+    templateParams.set("r", slugValue);
+    if (tableParam) {
+      templateParams.set("mesa", tableParam);
     }
+    window.location.replace(
+      `${resolveRestaurantTemplatePath(restaurant.template)}?${templateParams.toString()}`
+    );
+    return;
 
     menuItems = items;
     resetMenuFilters();

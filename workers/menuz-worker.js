@@ -27,6 +27,8 @@ const JSON_HEADERS = {
   "cache-control": "no-store"
 };
 const DEFAULT_ACCENT = "#D95F2B";
+const DEFAULT_PUBLIC_TEMPLATE = "topo-do-mundo";
+const TEMPLATE_NAME_PATTERN = /^[a-z0-9-]{1,60}$/;
 const DEFAULT_LANGUAGE_CODE = "pt-BR";
 const DEFAULT_LANGUAGE_OPTIONS = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
 const UI_MESSAGE_KEYS = [
@@ -353,6 +355,17 @@ function normalizeSlug(text) {
     .slice(0, 64);
 }
 
+function sanitizeTemplateName(value) {
+  const raw = (value || "").toString().trim().toLowerCase();
+  if (!raw || raw === "default") return DEFAULT_PUBLIC_TEMPLATE;
+  if (!TEMPLATE_NAME_PATTERN.test(raw)) return DEFAULT_PUBLIC_TEMPLATE;
+  return raw;
+}
+
+function resolveRestaurantTemplatePath(templateName) {
+  return `/templates/${sanitizeTemplateName(templateName)}.html`;
+}
+
 function sanitizeUser(user) {
   if (!user) return null;
   return {
@@ -373,7 +386,7 @@ function mapRestaurantRow(row) {
     description: row.description || "",
     logo: row.logo || "",
     theme: { accent: row.accent || DEFAULT_ACCENT },
-    template: row.template || "default",
+    template: sanitizeTemplateName(row.template),
     heroImages: parseJsonSafe(row.hero_images_json, []),
     contact: {
       address: row.contact_address || "",
@@ -1181,12 +1194,11 @@ async function handleRestaurantRedirect(url, env, slug) {
   params.set("r", slug);
 
   const restaurant = await getRestaurantBySlug(env, slug);
-  if (restaurant && restaurant.template === "topo-do-mundo") {
-    const target = new URL(`/templates/topo-do-mundo?${params.toString()}`, url);
-    return Response.redirect(target.toString(), 302);
-  }
-  const fallback = new URL(`/?${params.toString()}`, url);
-  return Response.redirect(fallback.toString(), 302);
+  const target = new URL(
+    `${resolveRestaurantTemplatePath(restaurant ? restaurant.template : DEFAULT_PUBLIC_TEMPLATE)}?${params.toString()}`,
+    url
+  );
+  return Response.redirect(target.toString(), 302);
 }
 
 async function handleUploads(request, env, pathname) {
@@ -1793,7 +1805,7 @@ async function handleApi(request, env, url) {
       slug: row.slug,
       description: row.description || "",
       logo: row.logo || "",
-      template: row.template || "default",
+      template: sanitizeTemplateName(row.template),
       itemCount: toInt(row.item_count)
     }));
     return json({ restaurants });
@@ -2063,7 +2075,7 @@ async function handleApi(request, env, url) {
       description: sanitizeText(body.description, 500),
       logo: sanitizeNullableUrl(body.logo),
       accent: sanitizeText(body.accent || DEFAULT_ACCENT, 16) || DEFAULT_ACCENT,
-      template: sanitizeText(body.template || "default", 60) || "default",
+      template: sanitizeTemplateName(body.template || DEFAULT_PUBLIC_TEMPLATE),
       heroImages: [],
       contactAddress: sanitizeText(body.contactAddress || body.address, 220),
       contactPhone: sanitizeText(body.contactPhone || body.phone, 80),
@@ -2118,7 +2130,9 @@ async function handleApi(request, env, url) {
     if (body.description !== undefined) next.description = sanitizeText(body.description, 500);
     if (body.logo !== undefined) next.logo = sanitizeNullableUrl(body.logo);
     if (body.accent !== undefined) next.theme.accent = sanitizeText(body.accent, 16) || DEFAULT_ACCENT;
-    if (body.template !== undefined) next.template = sanitizeText(body.template || "default", 60) || "default";
+    if (body.template !== undefined) {
+      next.template = sanitizeTemplateName(body.template || DEFAULT_PUBLIC_TEMPLATE);
+    }
     if (body.contactAddress !== undefined || body.address !== undefined) {
       next.contact = next.contact || {};
       next.contact.address = sanitizeText(body.contactAddress ?? body.address, 220);
@@ -2190,7 +2204,7 @@ async function handleApi(request, env, url) {
         next.description,
         next.logo,
         next.theme.accent || DEFAULT_ACCENT,
-        next.template || "default",
+        sanitizeTemplateName(next.template),
         JSON.stringify(next.heroImages || []),
         (next.contact && next.contact.address) || "",
         (next.contact && next.contact.phone) || "",

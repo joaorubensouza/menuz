@@ -13,6 +13,12 @@ const sideDrawer = document.getElementById("side-drawer");
 const drawerClose = document.getElementById("drawer-close");
 const drawerLang = document.getElementById("drawer-lang");
 const drawerInfo = document.getElementById("drawer-info");
+const brandLogo = document.getElementById("brand-logo");
+const brandTitle = document.getElementById("brand-title");
+const brandSub = document.getElementById("brand-sub");
+const drawerBrandLogo = document.getElementById("drawer-brand-logo");
+const drawerBrandTitle = document.getElementById("drawer-brand-title");
+const drawerBrandSub = document.getElementById("drawer-brand-sub");
 
 const langModal = document.getElementById("lang-modal");
 const langClose = document.getElementById("lang-close");
@@ -573,23 +579,59 @@ function translateCategory(rawCategory) {
   return dict[state.language] || dict["pt-BR"] || rawCategory;
 }
 
+function getRestaurantBranding() {
+  const restaurant = state.restaurant || {};
+  const contact = restaurant.contact || {};
+  const name = (restaurant.name || "Cardapio").toString().trim() || "Cardapio";
+  let subtitle = "";
+  if (contact.website) {
+    subtitle = contact.website.toString().trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+  }
+  if (!subtitle) {
+    subtitle = "menu digital";
+  }
+  subtitle = subtitle.slice(0, 34);
+  return {
+    name,
+    subtitle,
+    logo: restaurant.logo || ""
+  };
+}
+
+function applyRestaurantBranding() {
+  const brand = getRestaurantBranding();
+  if (brandTitle) brandTitle.textContent = brand.name;
+  if (brandSub) brandSub.textContent = brand.subtitle;
+  if (drawerBrandTitle) drawerBrandTitle.textContent = brand.name;
+  if (drawerBrandSub) drawerBrandSub.textContent = brand.subtitle;
+  if (brandLogo) {
+    if (brand.logo) {
+      brandLogo.src = brand.logo;
+      brandLogo.classList.remove("hidden");
+    } else {
+      brandLogo.removeAttribute("src");
+      brandLogo.classList.add("hidden");
+    }
+  }
+  if (drawerBrandLogo) {
+    if (brand.logo) {
+      drawerBrandLogo.src = brand.logo;
+      drawerBrandLogo.classList.remove("hidden");
+    } else {
+      drawerBrandLogo.removeAttribute("src");
+      drawerBrandLogo.classList.add("hidden");
+    }
+  }
+  document.title = `${brand.name} | Cardapio digital`;
+}
+
 function getRestaurantContact() {
   const contact = (state.restaurant && state.restaurant.contact) || {};
-  if (Object.keys(contact).length > 0) return contact;
-
-  if ((state.restaurant && state.restaurant.slug) === "topo-do-mundo-mg") {
-    return {
-      address: "Rua Senador Milton Campos, 145, Vila da Serra, Nova Lima - MG, Brasil",
-      phone: "(31) 99711-0124",
-      email: "topodomundo@topodomundo.com",
-      website: "www.topodomundo.com"
-    };
-  }
   return {
-    address: "Endereco nao informado",
-    phone: "-",
-    email: "-",
-    website: "-"
+    address: contact.address || "-",
+    phone: contact.phone || "-",
+    email: contact.email || "-",
+    website: contact.website || "-"
   };
 }
 
@@ -1131,6 +1173,7 @@ async function loadRestaurant() {
   if (!slug) {
     restaurantName.textContent = "Restaurante nao informado";
     restaurantDesc.textContent = "Abra por um link com parametro ?r=slug";
+    applyRestaurantBranding();
     return;
   }
 
@@ -1138,6 +1181,7 @@ async function loadRestaurant() {
   if (!res.ok) {
     restaurantName.textContent = "Restaurante nao encontrado";
     restaurantDesc.textContent = "Confira o link do QR Code.";
+    applyRestaurantBranding();
     return;
   }
 
@@ -1162,6 +1206,7 @@ async function loadRestaurant() {
   }
 
   restaurantName.textContent = state.restaurant.name || "Cardapio";
+  applyRestaurantBranding();
   trackPublicEvent("menu_view", {
     restaurantSlug: state.restaurant.slug || slug,
     table: getTableValue()
