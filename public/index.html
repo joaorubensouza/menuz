@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Menuz AR - Cardapio com Realidade Aumentada</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/site.css" />
   </head>
   <body class="site site-home">
@@ -30,17 +31,41 @@
           </div>
           <aside class="intro-art">
             <article class="intro-art-main">
-              <span>Espaco visual hero</span>
-              <strong>Imagem principal do cliente</strong>
+              <img
+                class="intro-art-photo"
+                src="/assets/landing/hero-restaurant.webp"
+                alt="Restaurante com vista panoramica ao entardecer"
+                loading="eager"
+              />
+              <div class="intro-art-overlay">
+                <span>Espaco visual hero</span>
+                <strong>Experiencia de alto padrao na primeira dobra</strong>
+              </div>
             </article>
             <div class="intro-art-grid">
               <article class="intro-art-item">
-                <span>Imagem 02</span>
-                <p>Mockup de uso no celular</p>
+                <img
+                  class="intro-art-photo"
+                  src="/assets/landing/hero-food.webp"
+                  alt="Prato premium apresentado em foto de alta qualidade"
+                  loading="lazy"
+                />
+                <div class="intro-art-overlay">
+                  <span>Imagem 02</span>
+                  <p>Foto de prato para chamar atencao</p>
+                </div>
               </article>
               <article class="intro-art-item">
-                <span>Imagem 03</span>
-                <p>Cena real no restaurante</p>
+                <img
+                  class="intro-art-photo"
+                  src="/assets/landing/hero-skyline.webp"
+                  alt="Vista noturna da cidade vista do restaurante"
+                  loading="lazy"
+                />
+                <div class="intro-art-overlay">
+                  <span>Imagem 03</span>
+                  <p>Cena real para reforcar valor percebido</p>
+                </div>
               </article>
             </div>
           </aside>
@@ -56,27 +81,48 @@
               </p>
               <button class="btn intro-primary" type="button" data-intro-start>Iniciar</button>
             </div>
-            <div class="intro-phone-mock">Imagem em destaque</div>
+            <img
+              class="intro-phone-mock"
+              src="/assets/landing/hero-night.webp"
+              alt="Vista noturna do alto da cidade para secao de destaque"
+              loading="lazy"
+            />
           </div>
         </section>
 
         <section class="intro-section intro-soft">
           <h2>Prova social que passa confianca.</h2>
           <article class="intro-testimonial-card">
-            <div class="intro-stars">★★★★★</div>
+            <div class="intro-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
             <p>
-              "A apresentacao ficou muito mais clara para o cliente final, e a taxa de pedido aumentou."
+              "Com a pagina de entrada mais visual, a conversao no cardapio subiu e o cliente
+              entende o produto antes mesmo de sentar."
             </p>
-            <div class="intro-testimonial-user">Cliente real do restaurante</div>
+            <div class="intro-testimonial-gallery">
+              <img src="/assets/landing/hero-food.webp" alt="Prato fotografado para cardapio" loading="lazy" />
+              <img
+                src="/assets/landing/hero-restaurant.webp"
+                alt="Interior de restaurante premium para prova social"
+                loading="lazy"
+              />
+              <img src="/assets/landing/hero-skyline.webp" alt="Panorama da cidade ao anoitecer" loading="lazy" />
+            </div>
+            <div class="intro-testimonial-user">Gestor de unidade parceira | Topo do Mundo</div>
           </article>
         </section>
 
         <section class="intro-section intro-white">
           <h2>Ajude o cliente a decidir rapido.</h2>
           <div class="intro-phones-grid">
-            <div class="intro-phone">Tela 1</div>
-            <div class="intro-phone">Tela 2</div>
-            <div class="intro-phone">Tela 3</div>
+            <div class="intro-phone">
+              <img src="/assets/landing/hero-food.webp" alt="Imagem do prato no cardapio digital" loading="lazy" />
+            </div>
+            <div class="intro-phone">
+              <img src="/assets/landing/hero-restaurant.webp" alt="Ambiente do restaurante em destaque" loading="lazy" />
+            </div>
+            <div class="intro-phone">
+              <img src="/assets/landing/hero-night.webp" alt="Visual noturno para pagina de campanha" loading="lazy" />
+            </div>
           </div>
           <p class="intro-note">
             Depois dessa apresentacao, ao clicar em iniciar, abrimos a tela completa de restaurante.
@@ -144,18 +190,42 @@
             </div>
             <aside class="hero-visual">
               <article class="hero-media hero-media-main">
-                <div class="media-chip">Imagem hero IA</div>
-                <h3>Mostre o prato antes do cliente decidir.</h3>
-                <p>Espaco pronto para sua imagem principal em alta qualidade.</p>
+                <img
+                  class="hero-media-photo"
+                  src="/assets/landing/hero-food.webp"
+                  alt="Prato principal do restaurante em alta definicao"
+                  loading="eager"
+                />
+                <div class="hero-media-content">
+                  <div class="media-chip">Imagem principal</div>
+                  <h3>Mostre o prato antes do cliente decidir.</h3>
+                  <p>Foto premium pronta para vender melhor na mesa.</p>
+                </div>
               </article>
               <div class="hero-media-grid">
                 <article class="hero-media">
-                  <div class="media-chip">Imagem IA 02</div>
-                  <p>Mockup de cardapio no celular.</p>
+                  <img
+                    class="hero-media-photo"
+                    src="/assets/landing/hero-restaurant.webp"
+                    alt="Ambiente do restaurante com iluminacao premium"
+                    loading="lazy"
+                  />
+                  <div class="hero-media-content">
+                    <div class="media-chip">Imagem ambiente</div>
+                    <p>Cena real para reforcar posicionamento da marca.</p>
+                  </div>
                 </article>
                 <article class="hero-media">
-                  <div class="media-chip">Imagem IA 03</div>
-                  <p>Cena de AR no ambiente do restaurante.</p>
+                  <img
+                    class="hero-media-photo"
+                    src="/assets/landing/hero-skyline.webp"
+                    alt="Paisagem noturna para bloco de destaque"
+                    loading="lazy"
+                  />
+                  <div class="hero-media-content">
+                    <div class="media-chip">Imagem institucional</div>
+                    <p>Visual de alto impacto para campanhas e franquias.</p>
+                  </div>
                 </article>
               </div>
               <div class="hero-card">
@@ -180,7 +250,12 @@
                 experiencia de pedido com AR.
               </p>
               <div class="form-row" style="margin-top: 12px;">
-                <input class="input" id="code-input" placeholder="codigo do restaurante" />
+                <input
+                  class="input"
+                  id="code-input"
+                  placeholder="codigo do restaurante"
+                  autocomplete="off"
+                />
                 <button class="btn" id="code-button" type="button">Abrir cardapio</button>
               </div>
               <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
@@ -264,8 +339,22 @@
               Use seu email e senha para abrir o painel com pedidos, analytics e fila 3D.
             </p>
             <form class="form-grid" id="quick-login-form" style="margin-top: 12px;">
-              <input class="input" type="email" id="quick-login-email" placeholder="Email" required />
-              <input class="input" type="password" id="quick-login-password" placeholder="Senha" required />
+              <input
+                class="input"
+                type="email"
+                id="quick-login-email"
+                placeholder="Email"
+                autocomplete="username"
+                required
+              />
+              <input
+                class="input"
+                type="password"
+                id="quick-login-password"
+                placeholder="Senha"
+                autocomplete="current-password"
+                required
+              />
               <button class="btn" type="submit">Entrar no painel</button>
               <div class="muted" id="quick-login-msg"></div>
             </form>
@@ -314,7 +403,7 @@
           <div id="order-items"></div>
           <div class="divider"></div>
           <div class="form-row">
-            <input class="input" id="order-table" placeholder="Mesa (ex: 12)" />
+            <input class="input" id="order-table" placeholder="Mesa (ex: 12)" autocomplete="off" />
             <button class="btn" id="order-submit">Enviar pedido</button>
           </div>
           <div class="muted" id="order-message" style="margin-top: 8px;"></div>

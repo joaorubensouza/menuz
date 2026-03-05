@@ -206,11 +206,10 @@ textarea {
   min-height: 208px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  padding: 14px;
-  display: grid;
-  align-content: start;
-  gap: 8px;
+  padding: 0;
+  display: block;
   color: #f8fcff;
+  overflow: hidden;
   background:
     radial-gradient(circle at 25% 18%, rgba(255, 255, 255, 0.25), transparent 36%),
     radial-gradient(circle at 95% 82%, rgba(231, 118, 46, 0.4), transparent 42%),
@@ -242,27 +241,67 @@ textarea {
 }
 
 .intro-art-item {
+  position: relative;
   min-height: 120px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 12px;
+  padding: 0;
   color: #f4f8ff;
+  overflow: hidden;
   background:
     radial-gradient(circle at 76% 80%, rgba(36, 165, 189, 0.3), transparent 38%),
     linear-gradient(140deg, rgba(18, 30, 42, 0.96), rgba(30, 61, 82, 0.86));
 }
 
-.intro-art-item span {
+.intro-art-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.intro-art-main .intro-art-photo {
+  min-height: 208px;
+}
+
+.intro-art-item .intro-art-photo {
+  min-height: 120px;
+}
+
+.intro-art-overlay {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  border-radius: 14px;
+  padding: 9px 10px;
+  background: linear-gradient(180deg, rgba(7, 13, 22, 0.1), rgba(7, 13, 22, 0.84));
+  backdrop-filter: blur(4px);
+  display: grid;
+  gap: 4px;
+}
+
+.intro-art-main .intro-art-overlay {
+  inset: auto 12px 12px 12px;
+}
+
+.intro-art-overlay span {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
 }
 
-.intro-art-item p {
-  margin-top: 8px;
+.intro-art-overlay p {
+  margin-top: 2px;
   font-weight: 600;
-  max-width: 18ch;
+  max-width: 22ch;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.intro-art-overlay strong {
+  font-size: 1.24rem;
+  line-height: 1.06;
+  max-width: 20ch;
 }
 
 .intro-section {
@@ -338,6 +377,7 @@ textarea {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  object-fit: cover;
 }
 
 .intro-soft {
@@ -379,6 +419,22 @@ textarea {
   font-weight: 600;
 }
 
+.intro-testimonial-gallery {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.intro-testimonial-gallery img {
+  width: 108px;
+  height: 82px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(76, 40, 217, 0.16);
+}
+
 .intro-white {
   background: rgba(255, 255, 255, 0.84);
 }
@@ -409,6 +465,13 @@ textarea {
   place-items: center;
   font-weight: 700;
   color: #4d5467;
+  overflow: hidden;
+}
+
+.intro-phone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .intro-note {
@@ -686,14 +749,23 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 16px;
   min-height: 128px;
-  padding: 12px;
-  background:
-    radial-gradient(circle at 20% 15%, rgba(255, 255, 255, 0.26), transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(15, 121, 171, 0.28), transparent 48%),
-    linear-gradient(140deg, rgba(16, 25, 33, 0.9), rgba(16, 42, 50, 0.82));
+  padding: 0;
+  background: #122234;
   color: #fff;
   overflow: hidden;
   box-shadow: var(--shadow-soft);
+  display: grid;
+  align-content: end;
+}
+
+.hero-media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.22), transparent 28%),
+    linear-gradient(180deg, rgba(5, 9, 16, 0.06), rgba(7, 12, 21, 0.8));
+  z-index: 1;
 }
 
 .hero-media::after {
@@ -707,12 +779,26 @@ textarea {
   filter: blur(2px);
 }
 
+.hero-media-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-media-content {
+  position: relative;
+  z-index: 2;
+  padding: 12px;
+}
+
 .hero-media-main {
   min-height: 210px;
-  background:
-    radial-gradient(circle at 8% 10%, rgba(255, 255, 255, 0.3), transparent 32%),
-    radial-gradient(circle at 90% 80%, rgba(201, 95, 47, 0.36), transparent 44%),
-    linear-gradient(140deg, rgba(20, 30, 40, 0.9), rgba(45, 77, 91, 0.85));
+}
+
+.hero-media-main .hero-media-content {
+  padding: 14px;
 }
 
 .hero-media h3 {
@@ -1172,6 +1258,11 @@ model-viewer {
 
   .intro-testimonial-card p {
     font-size: 1.1rem;
+  }
+
+  .intro-testimonial-gallery img {
+    width: 94px;
+    height: 72px;
   }
 
   .nav {
