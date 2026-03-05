@@ -1190,10 +1190,14 @@ async function getModelJobById(env, id) {
 }
 
 async function handleRestaurantRedirect(url, env, slug) {
+  const safeSlug = normalizeSlug(slug);
+  if (!safeSlug) {
+    return Response.redirect(new URL("/", url).toString(), 302);
+  }
   const params = new URLSearchParams(url.search);
-  params.set("r", slug);
+  params.set("r", safeSlug);
 
-  const restaurant = await getRestaurantBySlug(env, slug);
+  const restaurant = await getRestaurantBySlug(env, safeSlug);
   const target = new URL(
     `${resolveRestaurantTemplatePath(restaurant ? restaurant.template : DEFAULT_PUBLIC_TEMPLATE)}?${params.toString()}`,
     url
@@ -1813,7 +1817,9 @@ async function handleApi(request, env, url) {
 
   const publicRestaurant = method === "GET" && matchRoute("/api/public/restaurant/:slug", pathname);
   if (publicRestaurant) {
-    const restaurant = await getRestaurantBySlug(env, publicRestaurant.slug);
+    const safeSlug = normalizeSlug(publicRestaurant.slug);
+    if (!safeSlug) return json({ error: "restaurant_not_found" }, 404);
+    const restaurant = await getRestaurantBySlug(env, safeSlug);
     if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
     const { results } = await env.DB.prepare(
       "SELECT * FROM items WHERE restaurant_id = ?1 ORDER BY name COLLATE NOCASE"
@@ -1828,6 +1834,11 @@ async function handleApi(request, env, url) {
     const item = await getItemById(env, publicItem.id);
     if (!item) return json({ error: "item_not_found" }, 404);
     const restaurant = await getRestaurantById(env, item.restaurantId);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    const requestedSlug = normalizeSlug(url.searchParams.get("r") || "");
+    if (requestedSlug && restaurant.slug !== requestedSlug) {
+      return json({ error: "item_not_found" }, 404);
+    }
     return json({ item: toPublicItem(item), restaurant });
   }
 

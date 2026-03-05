@@ -896,6 +896,12 @@ body {
     font-size: 9px;
   }
 
+  .brand-logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
   .hero-nav {
     font-size: 30px;
     width: 34px;
