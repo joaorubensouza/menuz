@@ -1199,10 +1199,44 @@ function renderModelJobs() {
       uploadImagesButton.disabled = true;
       modelJobMsg.textContent = "";
       try {
-        await uploadModelJobReferenceImages(job.id, input.files);
-        modelJobMsg.textContent = "Fotos enviadas para o job.";
+        const uploadData = await uploadModelJobReferenceImages(job.id, input.files);
+        const capture = uploadData && uploadData.capture ? uploadData.capture : null;
+        const totalVisualInputs = capture
+          ? Number(capture.totalVisualInputs || 0)
+          : Number(uploadData && uploadData.count ? uploadData.count : 0);
+        const recommendedForQuality = capture ? Number(capture.recommendedForQuality || 0) : 0;
+        const readyToStart = capture ? Boolean(capture.readyToStart) : false;
+
+        let statusMessage = `Fotos enviadas para o job (${totalVisualInputs}).`;
+        if (!readyToStart) {
+          statusMessage =
+            `Fotos enviadas (${totalVisualInputs}), mas ainda insuficiente para iniciar IA. ` +
+            "Capture mais angulos e tente novamente.";
+        } else if (recommendedForQuality > 0 && totalVisualInputs < recommendedForQuality) {
+          statusMessage =
+            `Fotos enviadas (${totalVisualInputs}). Recomendado: ${recommendedForQuality}+ para melhor realismo.`;
+        }
+
+        if (job.autoMode && state.activeRestaurant) {
+          const autoData = await api(
+            `/api/restaurants/${state.activeRestaurant.id}/model-jobs/auto-process`,
+            {
+              method: "POST",
+              body: JSON.stringify({ maxJobs: 6 })
+            }
+          );
+          const summary = autoData && autoData.summary ? autoData.summary : {};
+          statusMessage =
+            `Fotos enviadas (${totalVisualInputs}). ` +
+            `Automacao executada: ${summary.started || 0} iniciados, ` +
+            `${summary.synced || 0} sincronizados, ${summary.published || 0} publicados.`;
+        }
+
+        modelJobMsg.textContent = statusMessage;
         input.value = "";
         await loadModelJobs(state.activeRestaurant.id);
+        await loadItems(state.activeRestaurant.id);
+        await loadAnalytics(state.activeRestaurant.id);
       } catch (err) {
         if (err.message === "too_many_reference_images") {
           modelJobMsg.textContent = "Limite atingido: maximo de 40 fotos por job.";

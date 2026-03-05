@@ -46,8 +46,8 @@ const MESHY_DEFAULT_MODEL = process.env.MESHY_AI_MODEL || "meshy-6";
 const MESHY_MAX_REFERENCE_IMAGES = Number(process.env.MESHY_MAX_REFERENCE_IMAGES || 4);
 const CAPTURE_MIN_START_FOOD = Number(process.env.CAPTURE_MIN_START_FOOD || 6);
 const CAPTURE_MIN_START_GENERAL = Number(process.env.CAPTURE_MIN_START_GENERAL || 4);
-const CAPTURE_RECOMMENDED_FOOD = Number(process.env.CAPTURE_RECOMMENDED_FOOD || 12);
-const CAPTURE_RECOMMENDED_GENERAL = Number(process.env.CAPTURE_RECOMMENDED_GENERAL || 8);
+const CAPTURE_RECOMMENDED_FOOD = Number(process.env.CAPTURE_RECOMMENDED_FOOD || 20);
+const CAPTURE_RECOMMENDED_GENERAL = Number(process.env.CAPTURE_RECOMMENDED_GENERAL || 12);
 const SESSION_SECRET = (process.env.SESSION_SECRET || "").toString().trim() || "dev-session-secret-change-me";
 const GOOGLE_TRANSLATE_LANGUAGE_MAP = {
   "pt-BR": "pt",
@@ -601,6 +601,11 @@ function findItem(db, id) {
   return db.items.find((i) => i.id === id);
 }
 
+function findModelJob(db, id) {
+  ensureModelJobs(db);
+  return db.modelJobs.find((job) => job.id === id);
+}
+
 function authorizeRestaurant(req, res, next) {
   const restaurant = findRestaurant(req.db, req.params.id);
   if (!restaurant) {
@@ -622,6 +627,18 @@ function authorizeItem(req, res, next) {
     return res.status(403).json({ error: "forbidden" });
   }
   req.item = item;
+  next();
+}
+
+function authorizeModelJob(req, res, next) {
+  const job = findModelJob(req.db, req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "job_not_found" });
+  }
+  if (!canAccessRestaurant(req.user, job.restaurantId)) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  req.modelJob = job;
   next();
 }
 
@@ -1019,10 +1036,22 @@ async function buildJobImageInputs(item, job) {
     if (!imageInput || seen.has(imageInput)) continue;
     seen.add(imageInput);
     unique.push(imageInput);
-    if (unique.length >= MESHY_MAX_REFERENCE_IMAGES) break;
   }
 
-  return unique;
+  if (unique.length <= MESHY_MAX_REFERENCE_IMAGES) {
+    return unique;
+  }
+
+  const sampled = [];
+  for (let index = 0; index < MESHY_MAX_REFERENCE_IMAGES; index += 1) {
+    const ratio = MESHY_MAX_REFERENCE_IMAGES === 1
+      ? 0
+      : index / (MESHY_MAX_REFERENCE_IMAGES - 1);
+    const sourceIndex = Math.round(ratio * (unique.length - 1));
+    sampled.push(unique[sourceIndex]);
+  }
+
+  return [...new Set(sampled)].slice(0, MESHY_MAX_REFERENCE_IMAGES);
 }
 
 function mapMeshyStatus(meshyStatus) {
@@ -2064,17 +2093,11 @@ const uploadModelJobImages = multer({
 app.post(
   "/api/model-jobs/:id/images",
   requireAuth,
+  authorizeModelJob,
   uploadModelJobImages.array("photos", 20),
   async (req, res) => {
     const db = req.db;
-    ensureModelJobs(db);
-    const job = db.modelJobs.find((entry) => entry.id === req.params.id);
-    if (!job) {
-      return res.status(404).json({ error: "job_not_found" });
-    }
-    if (!canAccessRestaurant(req.user, job.restaurantId)) {
-      return res.status(403).json({ error: "forbidden" });
-    }
+    const job = req.modelJob;
     const files = Array.isArray(req.files) ? req.files : [];
     if (files.length === 0) {
       return res.status(400).json({ error: "photos_required" });
@@ -2084,9 +2107,7 @@ app.post(
       return res.status(400).json({ error: "too_many_reference_images", max: 40 });
     }
 
-    const urls = files.map(
-      (file) => `/uploads/job-images/${req.params.id}/${file.filename}`
-    );
+    const urls = files.map((file) => `/uploads/job-images/${job.id}/${file.filename}`);
     if (!Array.isArray(job.referenceImages)) {
       job.referenceImages = [];
     }

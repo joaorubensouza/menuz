@@ -475,11 +475,11 @@ function getConfig(env) {
   const captureMinStartGeneral = Math.max(2, Math.min(20, toInt(env.CAPTURE_MIN_START_GENERAL, 4)));
   const captureRecommendedFood = Math.max(
     captureMinStartFood,
-    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_FOOD, 12))
+    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_FOOD, 20))
   );
   const captureRecommendedGeneral = Math.max(
     captureMinStartGeneral,
-    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_GENERAL, 8))
+    Math.min(40, toInt(env.CAPTURE_RECOMMENDED_GENERAL, 12))
   );
   return {
     tokenTtlMs: toInt(env.TOKEN_TTL_MS, 24 * 60 * 60 * 1000),
@@ -1329,9 +1329,20 @@ async function buildJobImageInputs(env, item, job) {
     if (!resolved || seen.has(resolved)) continue;
     seen.add(resolved);
     unique.push(resolved);
-    if (unique.length >= config.meshyMaxImages) break;
   }
-  return unique;
+
+  if (unique.length <= config.meshyMaxImages) {
+    return unique;
+  }
+
+  const sampled = [];
+  for (let index = 0; index < config.meshyMaxImages; index += 1) {
+    const ratio = config.meshyMaxImages === 1 ? 0 : index / (config.meshyMaxImages - 1);
+    const sourceIndex = Math.round(ratio * (unique.length - 1));
+    sampled.push(unique[sourceIndex]);
+  }
+
+  return [...new Set(sampled)].slice(0, config.meshyMaxImages);
 }
 
 function buildMeshyStartRequest(env, imageInputs, options = {}) {

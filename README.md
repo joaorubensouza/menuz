@@ -27,6 +27,16 @@ Demo logins:
    - `Avaliar QA` para gerar score de qualidade
    - `Publicar` (gate exige GLB + USDZ e score minimo)
 
+## Fluxo recomendado (20 fotos por prato)
+
+- Configuracao padrao recomendada:
+  - `CAPTURE_RECOMMENDED_FOOD=20`
+  - `CAPTURE_RECOMMENDED_GENERAL=12`
+- Para jobs em `auto_mode`, ao subir fotos no painel a automacao pode ser disparada na sequencia.
+- O pipeline escolhe imagens de forma distribuida para envio ao Meshy, melhorando cobertura visual.
+- Roteiro comercial + operacional pronto:
+  - `docs/roteiro-vendas-operacao.md`
+
 ## Language translation (Google API)
 
 - Endpoint publico (server/worker):
