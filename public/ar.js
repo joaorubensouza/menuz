@@ -9,6 +9,12 @@ const iosQuickLookLink = document.getElementById("iosQuickLookLink");
 const arHint = document.getElementById("arHint");
 const arFallback = document.getElementById("arFallback");
 const backLink = document.getElementById("back-link");
+const scaleControls = document.getElementById("scaleControls");
+const scaleRange = document.getElementById("scaleRange");
+const scaleValue = document.getElementById("scaleValue");
+const scaleDown = document.getElementById("scaleDown");
+const scaleUp = document.getElementById("scaleUp");
+const scaleReset = document.getElementById("scaleReset");
 
 const itemName = document.getElementById("item-name");
 const itemDesc = document.getElementById("item-desc");
@@ -18,9 +24,16 @@ const itemRestaurant = document.getElementById("item-restaurant");
 const slugParam = params.get("r");
 const tableParam = params.get("mesa");
 let arOpenTracked = false;
+let activeItem = null;
 const ua = navigator.userAgent || "";
 const isIOS = /iPhone|iPad|iPod/i.test(ua);
 const isAndroid = /Android/i.test(ua);
+const GABS_ITEM_ID = "i-topo-gabs";
+const SCALE_STORAGE_PREFIX = "menuz_item_scale_";
+const SCALE_MIN = 50;
+const SCALE_MAX = 200;
+const SCALE_STEP = 5;
+const SCALE_DEFAULT = 100;
 const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL"
@@ -60,6 +73,83 @@ function applyTheme() {
   document.body.setAttribute("data-theme", nextTheme);
 }
 
+function supportsScaleControls(item) {
+  if (!item) return false;
+  if ((item.id || "") === GABS_ITEM_ID) return true;
+  const glb = (item.modelGlb || "").toLowerCase();
+  const usdz = (item.modelUsdz || "").toLowerCase();
+  return glb.includes("/gabs.glb") || usdz.includes("/gabs.usdz");
+}
+
+function clampScalePercent(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return SCALE_DEFAULT;
+  const stepped = Math.round(n / SCALE_STEP) * SCALE_STEP;
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, stepped));
+}
+
+function buildScaleStorageKey(item) {
+  if (!item || !item.id) return "";
+  return `${SCALE_STORAGE_PREFIX}${item.id}`;
+}
+
+function loadSavedScale(item) {
+  const key = buildScaleStorageKey(item);
+  if (!key) return SCALE_DEFAULT;
+  try {
+    return clampScalePercent(localStorage.getItem(key));
+  } catch (_err) {
+    return SCALE_DEFAULT;
+  }
+}
+
+function saveScale(item, value) {
+  const key = buildScaleStorageKey(item);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, String(clampScalePercent(value)));
+  } catch (_err) {
+    // ignore storage failures (private mode, quota)
+  }
+}
+
+function applyViewerScale(value) {
+  if (!modelViewer) return;
+  const scalePercent = clampScalePercent(value);
+  const scalar = (scalePercent / 100).toFixed(2);
+  const vector = `${scalar} ${scalar} ${scalar}`;
+  modelViewer.setAttribute("scale", vector);
+  if ("scale" in modelViewer) {
+    modelViewer.scale = vector;
+  }
+  if (scaleRange) scaleRange.value = String(scalePercent);
+  if (scaleValue) scaleValue.textContent = `${scalePercent}%`;
+  if (activeItem) saveScale(activeItem, scalePercent);
+}
+
+function updateScaleControls(item) {
+  const canScale = supportsScaleControls(item);
+  if (scaleControls) {
+    scaleControls.classList.toggle("hidden", !canScale);
+  }
+  if (!canScale) {
+    applyViewerScale(SCALE_DEFAULT);
+    return;
+  }
+  applyViewerScale(loadSavedScale(item));
+}
+
+function buildQuickLookHref(usdzUrl, canScale) {
+  if (!usdzUrl) return "";
+  if (!canScale) return usdzUrl;
+  const [base, fragment] = usdzUrl.split("#");
+  if (!fragment) return `${base}#allowsContentScaling=1`;
+  if (/allowsContentScaling=\d/i.test(fragment)) {
+    return `${base}#${fragment.replace(/allowsContentScaling=\d/i, "allowsContentScaling=1")}`;
+  }
+  return `${base}#${fragment}&allowsContentScaling=1`;
+}
+
 function setFallback(message) {
   arFallback.textContent = message || "";
 }
@@ -85,13 +175,15 @@ function configureModelViewer(item) {
   if (!modelViewer) return;
   const hasGlb = Boolean(item.modelGlb);
   const hasUsdz = Boolean(item.modelUsdz);
+  const canScale = supportsScaleControls(item);
 
   if (hasGlb) modelViewer.setAttribute("src", item.modelGlb);
   if (hasUsdz) modelViewer.setAttribute("ios-src", item.modelUsdz);
   if (item.image) modelViewer.setAttribute("poster", item.image);
+  modelViewer.setAttribute("ar-scale", canScale ? "auto" : "fixed");
 
   if (isIOS && hasUsdz && iosQuickLookLink) {
-    iosQuickLookLink.href = item.modelUsdz;
+    iosQuickLookLink.href = buildQuickLookHref(item.modelUsdz, canScale);
     iosQuickLookLink.classList.remove("hidden");
   } else if (iosQuickLookLink) {
     iosQuickLookLink.classList.add("hidden");
@@ -104,7 +196,11 @@ function configureModelViewer(item) {
   } else if (isAndroid && !hasGlb) {
     arHint.textContent = "No Android, publique o arquivo GLB.";
     setFallback("Este item ainda nao tem GLB para Scene Viewer.");
+  } else if (canScale) {
+    arHint.textContent = "No prato GABS, ajuste a escala e tambem use pinca no AR para redimensionar.";
   }
+
+  updateScaleControls(item);
 }
 
 function updateBackLink(restaurant) {
@@ -156,6 +252,7 @@ async function loadItem() {
     setFallback("Item nao encontrado.");
     return;
   }
+  activeItem = item;
   trackPublicEvent("item_view", {
     restaurantSlug: (restaurant && restaurant.slug) || slugParam || "",
     itemId: item.id,
@@ -177,6 +274,7 @@ async function loadItem() {
 
   if (!hasModel) {
     arButton.classList.add("hidden");
+    if (scaleControls) scaleControls.classList.add("hidden");
     arHint.textContent = "Modelo 3D em breve.";
     setFallback("Esse prato ainda nao tem modelo 3D publicado.");
     return;
@@ -223,6 +321,29 @@ if (iosQuickLookLink) {
       });
     }
   });
+}
+
+function nudgeScale(delta) {
+  const current = scaleRange ? Number(scaleRange.value) : SCALE_DEFAULT;
+  applyViewerScale(current + delta);
+}
+
+if (scaleRange) {
+  scaleRange.addEventListener("input", () => {
+    applyViewerScale(scaleRange.value);
+  });
+}
+
+if (scaleDown) {
+  scaleDown.addEventListener("click", () => nudgeScale(-SCALE_STEP));
+}
+
+if (scaleUp) {
+  scaleUp.addEventListener("click", () => nudgeScale(SCALE_STEP));
+}
+
+if (scaleReset) {
+  scaleReset.addEventListener("click", () => applyViewerScale(SCALE_DEFAULT));
 }
 
 if (modelViewer) {

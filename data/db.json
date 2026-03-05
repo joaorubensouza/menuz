@@ -327,6 +327,18 @@
         "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/618075e8-7f8a-4370-a3c2-4c92282189b1.jpg",
         "/uploads/scans/i-4666fb42-c2d8-433c-aa48-c1dfa9cd54fc/053f33b0-da8f-43ef-b203-d35dca0df306.jpg"
       ]
+    },
+    {
+      "id": "i-topo-gabs",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato GABS",
+      "description": "Novo prato com visualizacao AR.",
+      "price": 96.9,
+      "image": "",
+      "modelGlb": "/uploads/models/GABS.glb",
+      "modelUsdz": "/uploads/models/GABS.usdz",
+      "category": "Pratos Principais",
+      "scans": []
     }
   ],
   "orders": [

@@ -1047,6 +1047,44 @@ model-viewer {
   background: #120f0c;
 }
 
+.scale-controls {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(14, 11, 9, 0.45);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.scale-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #efe2d0;
+}
+
+.scale-head strong {
+  font-size: 0.9rem;
+}
+
+.scale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scale-range {
+  flex: 1;
+  min-width: 140px;
+}
+
+.scale-btn {
+  min-width: 44px;
+  padding: 10px 0;
+}
+
 .footer-note {
   color: #c5b9a9;
   font-size: 0.9rem;

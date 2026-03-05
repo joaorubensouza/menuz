@@ -48,6 +48,31 @@
               <button class="btn" id="arButton" type="button">Ver em AR</button>
               <a class="btn btn-outline hidden" id="iosQuickLookLink" href="#" rel="ar">Abrir no iPhone</a>
             </div>
+            <div class="scale-controls hidden" id="scaleControls">
+              <div class="scale-head">
+                <strong>Escala do prato</strong>
+                <span id="scaleValue">100%</span>
+              </div>
+              <div class="scale-row">
+                <button class="btn btn-outline scale-btn" id="scaleDown" type="button" aria-label="Diminuir escala">
+                  -
+                </button>
+                <input
+                  id="scaleRange"
+                  class="scale-range"
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="5"
+                  value="100"
+                  aria-label="Ajustar escala do prato"
+                />
+                <button class="btn btn-outline scale-btn" id="scaleUp" type="button" aria-label="Aumentar escala">
+                  +
+                </button>
+                <button class="btn btn-outline" id="scaleReset" type="button">Resetar</button>
+              </div>
+            </div>
             <div class="footer-note" id="arHint">Funciona melhor com boa luz e superficie plana.</div>
             <div class="footer-note" id="arFallback"></div>
           </div>
