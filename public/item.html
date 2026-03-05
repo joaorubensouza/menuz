@@ -4,58 +4,103 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Menuz AR - Visualizar prato</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/site.css" />
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   </head>
-  <body>
+  <body class="site site-item">
     <div class="container">
       <nav class="nav">
         <div class="brand">Menuz <span>AR MENU</span></div>
         <div class="row">
-          <a class="btn btn-ghost" id="back-link" href="/">Voltar ao cardapio</a>
+          <a class="btn btn-outline" id="back-link" href="/">Voltar ao cardapio</a>
         </div>
       </nav>
 
       <section class="section">
-        <div class="viewer">
-          <model-viewer
-            id="modelViewer"
-            src=""
-            ios-src=""
-            ar
-            ar-modes="scene-viewer quick-look webxr"
-            camera-controls
-            touch-action="pan-y"
-            poster=""
-            shadow-intensity="1"
-            exposure="0.9"
-            loading="eager"
-            reveal="auto"
-            ar-scale="fixed"
-            ar-placement="floor"
-            interaction-prompt="auto"
-            environment-image="neutral"
-            min-camera-orbit="auto auto 60%"
-            max-camera-orbit="auto auto 180%"
-            camera-orbit="0deg 75deg 115%"
-          ></model-viewer>
-          <div class="row">
-            <button class="btn" id="arButton">Ver em AR</button>
-            <a class="btn btn-outline hidden" id="iosQuickLookLink" href="#" rel="ar">Abrir no iPhone</a>
-            <span class="muted" id="arHint">Funciona melhor com boa luz.</span>
+        <div class="section-title">
+          <h2>Visualizacao em AR do prato</h2>
+          <span class="badge">Experiencia imersiva</span>
+        </div>
+        <div class="viewer-grid">
+          <div class="viewer">
+            <model-viewer
+              id="modelViewer"
+              src=""
+              ios-src=""
+              ar
+              ar-modes="scene-viewer quick-look webxr"
+              camera-controls
+              touch-action="pan-y"
+              poster=""
+              shadow-intensity="1"
+              exposure="0.9"
+              loading="eager"
+              reveal="auto"
+              ar-scale="fixed"
+              ar-placement="floor"
+              interaction-prompt="auto"
+              environment-image="neutral"
+              min-camera-orbit="auto auto 60%"
+              max-camera-orbit="auto auto 180%"
+              camera-orbit="0deg 75deg 115%"
+            ></model-viewer>
+            <div class="row">
+              <button class="btn" id="arButton" type="button">Ver em AR</button>
+              <a class="btn btn-outline hidden" id="iosQuickLookLink" href="#" rel="ar">Abrir no iPhone</a>
+            </div>
+            <div class="footer-note" id="arHint">Funciona melhor com boa luz e superficie plana.</div>
+            <div class="footer-note" id="arFallback"></div>
           </div>
-          <div class="footer-note" id="arFallback"></div>
+          <aside class="panel">
+            <div class="tag" id="item-restaurant">Restaurante</div>
+            <h3 id="item-name">Prato</h3>
+            <p class="muted" id="item-desc"></p>
+            <div class="row" style="margin-top: 12px;">
+              <div class="price" id="item-price"></div>
+              <span class="badge">Tamanho real</span>
+            </div>
+            <div class="divider"></div>
+            <div class="trust-list">
+              <div class="trust-item">
+                <strong>Posicione em uma superficie plana</strong>
+                <p class="muted">Mesa, bancada ou chao com boa iluminacao ajudam no tracking.</p>
+              </div>
+              <div class="trust-item">
+                <strong>Aproxime e compare tamanho</strong>
+                <p class="muted">Use o zoom para validar porcao e apresentacao antes do pedido.</p>
+              </div>
+              <div class="trust-item">
+                <strong>Volte ao cardapio para finalizar</strong>
+                <p class="muted">Depois da visualizacao, retorne e conclua o pedido na mesa.</p>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
-
+      <section class="section">
+        <div class="proof-grid">
+          <article class="proof-card">
+            <strong>+Detalhe</strong>
+            <p class="muted">Texturas e volume ajudam o cliente a decidir mais rapido.</p>
+          </article>
+          <article class="proof-card">
+            <strong>+Confianca</strong>
+            <p class="muted">Reducao de duvidas sobre tamanho e composicao do prato.</p>
+          </article>
+          <article class="proof-card">
+            <strong>+Conversao</strong>
+            <p class="muted">A visualizacao em AR reduz friccao antes do checkout.</p>
+          </article>
+        </div>
+      </section>
       <section class="section">
         <div class="panel">
-          <div class="tag" id="item-restaurant">Restaurante</div>
-          <h2 id="item-name">Prato</h2>
-          <p class="muted" id="item-desc"></p>
+          <div class="tag">Dica operacional</div>
+          <p class="muted">
+            Publique sempre GLB e USDZ para garantir compatibilidade total entre Android e iPhone.
+          </p>
           <div class="row" style="margin-top: 12px;">
-            <div class="price" id="item-price"></div>
-            <span class="badge">Tamanho real</span>
+            <a class="btn btn-outline" href="/">Voltar ao cardapio</a>
           </div>
         </div>
       </section>

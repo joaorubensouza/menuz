@@ -2,6 +2,10 @@ const params = new URLSearchParams(window.location.search);
 const slug = params.get("r");
 const tableParam = params.get("mesa") || "";
 const THEME_KEY = "menuz_theme";
+const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL"
+});
 
 const gateSection = document.getElementById("gate-section");
 const codeInput = document.getElementById("code-input");
@@ -71,20 +75,87 @@ function applyTheme(theme) {
 }
 
 function initTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY) || "amber";
+  const savedTheme = safeLocalStorageGet(THEME_KEY) || "amber";
   applyTheme(savedTheme);
   if (!themeSelect) return;
   themeSelect.addEventListener("change", () => {
     const nextTheme = themeSelect.value;
-    localStorage.setItem(THEME_KEY, nextTheme);
+    safeLocalStorageSet(THEME_KEY, nextTheme);
     applyTheme(nextTheme);
   });
 }
 
+function isValidSlug(value) {
+  return /^[a-z0-9][a-z0-9-]{1,63}$/i.test(value);
+}
+
+function safeLocalStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_err) {
+    return "";
+  }
+}
+
+function safeLocalStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_err) {
+    // Ignore storage limitations (private mode/quota).
+  }
+}
+
+function setStatusMessage(element, message, type = "muted") {
+  if (!element) return;
+  element.textContent = message || "";
+  element.classList.remove("status-success", "status-error", "muted");
+  if (type === "success") {
+    element.classList.add("status-success");
+    return;
+  }
+  if (type === "error") {
+    element.classList.add("status-error");
+    return;
+  }
+  element.classList.add("muted");
+}
+
+function setCodeMessage(message, type = "muted") {
+  setStatusMessage(codeError, message, type);
+}
+
+function setOrderMessage(message, type = "muted") {
+  setStatusMessage(orderMessage, message, type);
+}
+
+function createEl(tag, className, textContent) {
+  const el = document.createElement(tag);
+  if (className) {
+    el.className = className;
+  }
+  if (typeof textContent === "string") {
+    el.textContent = textContent;
+  }
+  return el;
+}
+
+function formatPrice(value) {
+  const priceValue = Number(value);
+  if (!Number.isFinite(priceValue)) {
+    return PRICE_FORMATTER.format(0);
+  }
+  return PRICE_FORMATTER.format(priceValue);
+}
+
 async function api(url, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+
   const config = {
-    headers: { "Content-Type": "application/json" },
-    ...options
+    ...options,
+    headers
   };
 
   const res = await fetch(url, config);
@@ -98,9 +169,14 @@ async function api(url, options = {}) {
   return data;
 }
 
+function navigateToRestaurantSlug(slugValue) {
+  window.location.href = `/r/${encodeURIComponent(slugValue)}`;
+}
+
 if (ctaMenu) {
   ctaMenu.addEventListener("click", () => {
-    gateSection.scrollIntoView({ behavior: "smooth" });
+    if (!gateSection) return;
+    gateSection.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
@@ -112,16 +188,20 @@ if (ctaDemo) {
 
 if (codeButton) {
   codeButton.addEventListener("click", () => {
-    const code = (codeInput.value || "").trim();
+    const code = (codeInput && codeInput.value ? codeInput.value : "").trim();
     if (!code) {
-      codeError.textContent = "Digite o codigo do restaurante.";
+      setCodeMessage("Digite o codigo do restaurante.", "error");
       return;
     }
-    window.location.href = `/?r=${encodeURIComponent(code)}`;
+    if (!isValidSlug(code)) {
+      setCodeMessage("Codigo invalido. Use letras, numeros e hifen.", "error");
+      return;
+    }
+    navigateToRestaurantSlug(code);
   });
 }
 
-if (codeInput) {
+if (codeInput && codeButton) {
   codeInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -134,16 +214,16 @@ if (restaurantOpenButton) {
   restaurantOpenButton.addEventListener("click", () => {
     const selectedSlug = (restaurantSelect && restaurantSelect.value) || "";
     if (!selectedSlug) {
-      codeError.textContent = "Selecione um restaurante.";
+      setCodeMessage("Selecione um restaurante.", "error");
       return;
     }
-    window.location.href = `/r/${encodeURIComponent(selectedSlug)}`;
+    navigateToRestaurantSlug(selectedSlug);
   });
 }
 
 if (restaurantSelect) {
   restaurantSelect.addEventListener("change", () => {
-    codeError.textContent = "";
+    setCodeMessage("", "muted");
   });
 }
 
@@ -157,23 +237,36 @@ if (manageToggle && manageSection) {
 if (quickLoginForm) {
   quickLoginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    quickLoginMsg.textContent = "";
-    const email = document.getElementById("quick-login-email").value.trim();
-    const password = document.getElementById("quick-login-password").value.trim();
+    setStatusMessage(quickLoginMsg, "", "muted");
+    const emailInput = document.getElementById("quick-login-email");
+    const passwordInput = document.getElementById("quick-login-password");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value.trim() : "";
+    const submitButton = quickLoginForm.querySelector("button[type='submit']");
+
     if (!email || !password) {
-      quickLoginMsg.textContent = "Informe email e senha.";
+      setStatusMessage(quickLoginMsg, "Informe email e senha.", "error");
       return;
     }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+
     try {
       const data = await api("/api/login", {
         method: "POST",
         body: JSON.stringify({ email, password })
       });
-      localStorage.setItem("menuz_token", data.token);
-      localStorage.setItem("menuz_user", JSON.stringify(data.user));
+      safeLocalStorageSet("menuz_token", data.token);
+      safeLocalStorageSet("menuz_user", JSON.stringify(data.user));
       window.location.href = "/admin";
-    } catch (err) {
-      quickLoginMsg.textContent = "Login invalido.";
+    } catch (_err) {
+      setStatusMessage(quickLoginMsg, "Login invalido.", "error");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
     }
   });
 }
@@ -198,23 +291,21 @@ function renderRestaurantLinks(restaurants) {
   publicRestaurants = restaurants || [];
   renderRestaurantSelector(publicRestaurants);
 
-  if (!restaurants || restaurants.length === 0) {
-    if (codeError) {
-      codeError.textContent = "Nenhum restaurante cadastrado ainda.";
-    }
+  if (publicRestaurants.length === 0) {
+    setCodeMessage("Nenhum restaurante cadastrado ainda.", "muted");
     return;
   }
 
-  if (codeError) {
-    codeError.textContent = "";
-  }
+  setCodeMessage("", "muted");
 }
 
 async function loadRestaurantLinks() {
   if (!restaurantSelect) return;
 
-  if (codeError) {
-    codeError.textContent = "Carregando restaurantes...";
+  setCodeMessage("Carregando restaurantes...", "muted");
+  restaurantSelect.disabled = true;
+  if (restaurantOpenButton) {
+    restaurantOpenButton.disabled = true;
   }
 
   try {
@@ -224,89 +315,37 @@ async function loadRestaurantLinks() {
     }
     const data = await res.json();
     renderRestaurantLinks(data.restaurants || []);
-  } catch (err) {
+  } catch (_err) {
     renderRestaurantSelector([]);
-    if (codeError) {
-      codeError.textContent = "Nao foi possivel carregar os restaurantes.";
-    }
+    setCodeMessage("Nao foi possivel carregar os restaurantes.", "error");
+  } finally {
+    restaurantSelect.disabled = false;
   }
 }
 
-orderOpen.addEventListener("click", () => {
-  renderOrderItems();
-  orderModal.classList.remove("hidden");
-});
-
-orderClose.addEventListener("click", () => {
-  orderModal.classList.add("hidden");
-});
-
-orderSubmit.addEventListener("click", async () => {
-  if (!slug) return;
-  orderMessage.textContent = "";
-  const tableValue = (orderTable.value || tableParam).toString().trim();
-  if (!tableValue) {
-    orderMessage.textContent = "Informe a mesa.";
-    return;
-  }
-  if (cart.length === 0) {
-    orderMessage.textContent = "Seu pedido esta vazio.";
-    return;
-  }
-  const payload = {
-    restaurantSlug: slug,
-    table: tableValue,
-    items: cart.map((item) => ({ id: item.id, qty: item.qty }))
-  };
+function parseCart(rawValue) {
+  if (!rawValue) return [];
   try {
-    const res = await fetch("/api/public/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      orderMessage.textContent = "Erro ao enviar pedido.";
-      return;
-    }
-    localStorage.setItem(tableKey, tableValue);
-    cart = [];
-    saveCart();
-    renderOrderItems();
-    orderMessage.textContent = "Pedido enviado. Aguarde atendimento.";
-  } catch (err) {
-    orderMessage.textContent = "Erro ao enviar pedido.";
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => ({
+        id: typeof entry.id === "string" ? entry.id : "",
+        qty: Number(entry.qty) || 0
+      }))
+      .filter((entry) => entry.id && entry.qty > 0);
+  } catch (_err) {
+    return [];
   }
-});
-
-function formatPrice(value) {
-  const priceValue = Number(value);
-  return Number.isFinite(priceValue) ? priceValue.toFixed(2) : "0.00";
 }
 
 function loadCart() {
-  const raw = localStorage.getItem(cartKey);
-  cart = raw ? JSON.parse(raw) : [];
+  cart = parseCart(safeLocalStorageGet(cartKey));
 }
 
 function saveCart() {
-  localStorage.setItem(cartKey, JSON.stringify(cart));
+  safeLocalStorageSet(cartKey, JSON.stringify(cart));
   updateOrderBar();
-}
-
-function updateOrderBar() {
-  if (!slug) {
-    orderBar.classList.add("hidden");
-    return;
-  }
-  const detailed = getCartDetailed();
-  if (detailed.length === 0) {
-    orderBar.classList.add("hidden");
-    return;
-  }
-  const totalItems = detailed.reduce((acc, item) => acc + item.qty, 0);
-  const totalPrice = detailed.reduce((acc, item) => acc + item.qty * item.price, 0);
-  orderSummary.textContent = `${totalItems} itens | R$ ${formatPrice(totalPrice)}`;
-  orderBar.classList.remove("hidden");
 }
 
 function getCartDetailed() {
@@ -316,10 +355,36 @@ function getCartDetailed() {
       if (!menuItem) return null;
       return {
         ...menuItem,
-        qty: entry.qty
+        qty: entry.qty,
+        price: Number(menuItem.price) || 0
       };
     })
     .filter(Boolean);
+}
+
+function getOrderTotals(detailedItems) {
+  const totalItems = detailedItems.reduce((acc, item) => acc + item.qty, 0);
+  const totalPrice = detailedItems.reduce((acc, item) => acc + item.qty * item.price, 0);
+  return { totalItems, totalPrice };
+}
+
+function updateOrderBar() {
+  if (!orderBar || !orderSummary) return;
+  if (!slug) {
+    orderBar.classList.add("hidden");
+    return;
+  }
+
+  const detailed = getCartDetailed();
+  if (detailed.length === 0) {
+    orderBar.classList.add("hidden");
+    return;
+  }
+
+  const totals = getOrderTotals(detailed);
+  const label = totals.totalItems === 1 ? "item" : "itens";
+  orderSummary.textContent = `${totals.totalItems} ${label} | ${formatPrice(totals.totalPrice)}`;
+  orderBar.classList.remove("hidden");
 }
 
 function addToCart(itemId) {
@@ -330,7 +395,7 @@ function addToCart(itemId) {
     cart.push({ id: itemId, qty: 1 });
   }
   saveCart();
-  trackPublicEvent("add_to_cart", { itemId });
+  trackPublicEvent("add_to_cart", { itemId, table: tableParam || "" });
 }
 
 function updateCartQty(itemId, delta) {
@@ -345,121 +410,308 @@ function updateCartQty(itemId, delta) {
 }
 
 function renderOrderItems() {
+  if (!orderItems || !orderTable) return;
   const detailed = getCartDetailed();
-  orderItems.innerHTML = "";
+  orderItems.replaceChildren();
 
   if (tableParam) {
     orderTable.value = tableParam;
   } else {
-    const savedTable = localStorage.getItem(tableKey) || "";
-    orderTable.value = savedTable;
+    orderTable.value = safeLocalStorageGet(tableKey) || "";
   }
 
   if (detailed.length === 0) {
-    orderItems.innerHTML = "<div class=\"muted\">Seu pedido esta vazio.</div>";
+    orderItems.appendChild(createEl("div", "muted", "Seu pedido esta vazio."));
     return;
   }
 
   detailed.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "order-row";
-    row.innerHTML = `
-      <div>
-        <strong>${item.name}</strong>
-        <div class="muted">R$ ${formatPrice(item.price)}</div>
-      </div>
-      <div class="order-qty">
-        <button class="btn btn-outline" data-action="minus">-</button>
-        <span>${item.qty}</span>
-        <button class="btn btn-outline" data-action="plus">+</button>
-      </div>
-    `;
-    row.querySelector("[data-action='minus']").addEventListener("click", () => {
-      updateCartQty(item.id, -1);
-    });
-    row.querySelector("[data-action='plus']").addEventListener("click", () => {
-      updateCartQty(item.id, 1);
-    });
+    const row = createEl("div", "order-row");
+    const info = createEl("div");
+    const title = createEl("strong", "", item.name);
+    const price = createEl("div", "muted", formatPrice(item.price));
+    info.appendChild(title);
+    info.appendChild(price);
+
+    const controls = createEl("div", "order-qty");
+    const minusButton = createEl("button", "btn btn-outline", "-");
+    minusButton.type = "button";
+    const qty = createEl("span", "", String(item.qty));
+    const plusButton = createEl("button", "btn btn-outline", "+");
+    plusButton.type = "button";
+
+    minusButton.addEventListener("click", () => updateCartQty(item.id, -1));
+    plusButton.addEventListener("click", () => updateCartQty(item.id, 1));
+
+    controls.appendChild(minusButton);
+    controls.appendChild(qty);
+    controls.appendChild(plusButton);
+
+    row.appendChild(info);
+    row.appendChild(controls);
     orderItems.appendChild(row);
+  });
+
+  const totals = getOrderTotals(detailed);
+  const totalRow = createEl("div", "row");
+  totalRow.style.justifyContent = "space-between";
+  totalRow.style.marginTop = "12px";
+  totalRow.appendChild(createEl("strong", "", "Total"));
+  totalRow.appendChild(createEl("strong", "", formatPrice(totals.totalPrice)));
+  orderItems.appendChild(totalRow);
+}
+
+function openOrderModal() {
+  if (!orderModal) return;
+  renderOrderItems();
+  orderModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeOrderModal() {
+  if (!orderModal) return;
+  orderModal.classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+if (orderOpen) {
+  orderOpen.addEventListener("click", openOrderModal);
+}
+
+if (orderClose) {
+  orderClose.addEventListener("click", closeOrderModal);
+}
+
+if (orderModal) {
+  orderModal.addEventListener("click", (event) => {
+    if (event.target === orderModal) {
+      closeOrderModal();
+    }
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !orderModal) return;
+  if (orderModal.classList.contains("hidden")) return;
+  closeOrderModal();
+});
+
+if (orderSubmit) {
+  orderSubmit.addEventListener("click", async () => {
+    if (!slug || !orderTable) return;
+    setOrderMessage("", "muted");
+    const tableValue = (orderTable.value || tableParam).toString().trim();
+    if (!tableValue) {
+      setOrderMessage("Informe a mesa.", "error");
+      return;
+    }
+    if (cart.length === 0) {
+      setOrderMessage("Seu pedido esta vazio.", "error");
+      return;
+    }
+
+    const payload = {
+      restaurantSlug: slug,
+      table: tableValue,
+      items: cart.map((item) => ({ id: item.id, qty: item.qty }))
+    };
+
+    trackPublicEvent("order_submit", {
+      restaurantSlug: slug,
+      table: tableValue,
+      meta: { itemsCount: payload.items.length }
+    });
+
+    const originalLabel = orderSubmit.textContent;
+    orderSubmit.disabled = true;
+    orderSubmit.textContent = "Enviando...";
+
+    try {
+      const res = await fetch("/api/public/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setOrderMessage("Muitos pedidos em pouco tempo. Aguarde alguns segundos.", "error");
+        } else {
+          setOrderMessage("Erro ao enviar pedido.", "error");
+        }
+        return;
+      }
+
+      safeLocalStorageSet(tableKey, tableValue);
+      cart = [];
+      saveCart();
+      renderOrderItems();
+      setOrderMessage("Pedido enviado. Aguarde atendimento.", "success");
+      trackPublicEvent("order_success", {
+        restaurantSlug: slug,
+        table: tableValue
+      });
+    } catch (_err) {
+      setOrderMessage("Erro ao enviar pedido.", "error");
+    } finally {
+      orderSubmit.disabled = false;
+      orderSubmit.textContent = originalLabel || "Enviar pedido";
+    }
+  });
+}
+
+function buildItemUrl(itemId) {
+  const itemParams = new URLSearchParams();
+  itemParams.set("id", itemId);
+  if (slug) {
+    itemParams.set("r", slug);
+  }
+  if (tableParam) {
+    itemParams.set("mesa", tableParam);
+  }
+  return `/item.html?${itemParams.toString()}`;
+}
+
+function renderMenuLoading() {
+  if (!menuList) return;
+  menuList.replaceChildren();
+  const loadingPanel = createEl("div", "panel");
+  loadingPanel.appendChild(createEl("div", "tag", "Carregando"));
+  loadingPanel.appendChild(createEl("p", "muted", "Buscando itens do cardapio..."));
+  menuList.appendChild(loadingPanel);
+}
+
+function renderMenuCards(items) {
+  if (!menuList) return;
+  menuList.replaceChildren();
+
+  if (!items.length) {
+    const emptyPanel = createEl("div", "panel");
+    emptyPanel.appendChild(createEl("div", "tag", "Cardapio vazio"));
+    emptyPanel.appendChild(createEl("p", "muted", "Este restaurante ainda nao publicou itens."));
+    menuList.appendChild(emptyPanel);
+    return;
+  }
+
+  items.forEach((item) => {
+    const card = createEl("article", "card");
+
+    if (item.image) {
+      const image = document.createElement("img");
+      image.src = item.image;
+      image.alt = item.name || "Prato";
+      image.loading = "lazy";
+      card.appendChild(image);
+    } else {
+      const imagePlaceholder = createEl("div", "panel", "Imagem em breve");
+      imagePlaceholder.style.height = "180px";
+      imagePlaceholder.style.display = "grid";
+      imagePlaceholder.style.placeItems = "center";
+      card.appendChild(imagePlaceholder);
+    }
+
+    if (item.category) {
+      card.appendChild(createEl("span", "tag", item.category));
+    }
+
+    card.appendChild(createEl("h3", "", item.name || "Item sem nome"));
+    card.appendChild(createEl("p", "muted", item.description || ""));
+
+    const priceRow = createEl("div", "row");
+    priceRow.style.marginTop = "12px";
+    priceRow.appendChild(createEl("div", "price", formatPrice(item.price)));
+    card.appendChild(priceRow);
+
+    const actions = createEl("div", "row");
+    actions.style.marginTop = "10px";
+
+    const addButton = createEl("button", "btn btn-outline", "Adicionar");
+    addButton.type = "button";
+    addButton.addEventListener("click", () => addToCart(item.id));
+
+    const arLink = createEl("a", "btn", "Ver em AR");
+    arLink.href = buildItemUrl(item.id);
+    arLink.addEventListener("click", () => {
+      trackPublicEvent("item_view", { itemId: item.id, table: tableParam || "" });
+    });
+
+    actions.appendChild(addButton);
+    actions.appendChild(arLink);
+    card.appendChild(actions);
+    menuList.appendChild(card);
   });
 }
 
 async function loadMenu(slugValue) {
-  const res = await fetch(`/api/public/restaurant/${slugValue}`);
-  if (!res.ok) {
-    gateSection.classList.remove("hidden");
-    menuSection.classList.add("hidden");
-    codeError.textContent = "Restaurante nao encontrado.";
-    loadRestaurantLinks();
-    return;
-  }
-  const data = await res.json();
-  const { restaurant, items } = data;
-  if (restaurant.template === "topo-do-mundo") {
-    const templateParams = new URLSearchParams(window.location.search);
-    templateParams.set("r", slugValue);
-    if (tableParam) {
-      templateParams.set("mesa", tableParam);
+  if (!menuSection || !gateSection) return;
+  renderMenuLoading();
+
+  try {
+    const res = await fetch(`/api/public/restaurant/${encodeURIComponent(slugValue)}`);
+    if (!res.ok) {
+      gateSection.classList.remove("hidden");
+      menuSection.classList.add("hidden");
+      setCodeMessage("Restaurante nao encontrado.", "error");
+      loadRestaurantLinks();
+      return;
     }
-    window.location.replace(`/templates/topo-do-mundo.html?${templateParams.toString()}`);
-    return;
-  }
-  menuItems = items || [];
 
-  gateSection.classList.add("hidden");
-  menuSection.classList.remove("hidden");
+    const data = await res.json();
+    const restaurant = data.restaurant || {};
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (restaurant.template === "topo-do-mundo") {
+      const templateParams = new URLSearchParams(window.location.search);
+      templateParams.set("r", slugValue);
+      if (tableParam) {
+        templateParams.set("mesa", tableParam);
+      }
+      window.location.replace(`/templates/topo-do-mundo.html?${templateParams.toString()}`);
+      return;
+    }
 
-  menuTitle.textContent = restaurant.name;
-  menuSubtitle.textContent = `${menuItems.length} itens no cardapio`;
-  trackPublicEvent("menu_view", {
-    restaurantSlug: restaurant.slug || slugValue,
-    table: tableParam || ""
-  });
-  if (tableParam) {
-    trackPublicEvent("qr_scan", {
+    menuItems = items;
+    gateSection.classList.add("hidden");
+    menuSection.classList.remove("hidden");
+
+    if (menuTitle) {
+      menuTitle.textContent = restaurant.name || "Cardapio";
+    }
+    if (menuSubtitle) {
+      menuSubtitle.textContent = `${menuItems.length} itens no cardapio`;
+    }
+
+    trackPublicEvent("menu_view", {
       restaurantSlug: restaurant.slug || slugValue,
       table: tableParam || ""
     });
+    if (tableParam) {
+      trackPublicEvent("qr_scan", {
+        restaurantSlug: restaurant.slug || slugValue,
+        table: tableParam || ""
+      });
+    }
+
+    renderMenuCards(menuItems);
+    loadCart();
+    updateOrderBar();
+  } catch (_err) {
+    gateSection.classList.remove("hidden");
+    menuSection.classList.add("hidden");
+    setCodeMessage("Falha de rede ao carregar o cardapio.", "error");
+    loadRestaurantLinks();
   }
-
-  menuList.innerHTML = "";
-  menuItems.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "card";
-    const imageTag = item.image
-      ? `<img src="${item.image}" alt="${item.name}" />`
-      : `<div class="panel" style="height: 180px; display: grid; place-items: center;">Imagem em breve</div>`;
-    card.innerHTML = `
-      ${imageTag}
-      <h3>${item.name}</h3>
-      <p class="muted">${item.description || ""}</p>
-      <div class="row" style="margin-top: 12px;">
-        <div class="price">R$ ${formatPrice(item.price)}</div>
-      </div>
-      <div class="row" style="margin-top: 10px;">
-        <button class="btn btn-outline" data-add>Adicionar</button>
-        <a class="btn" data-ar-link href="/item.html?id=${item.id}">Ver em AR</a>
-      </div>
-    `;
-    card.querySelector("[data-add]").addEventListener("click", () => {
-      addToCart(item.id);
-    });
-    card.querySelector("[data-ar-link]").addEventListener("click", () => {
-      trackPublicEvent("item_view", { itemId: item.id });
-    });
-    menuList.appendChild(card);
-  });
-
-  loadCart();
-  updateOrderBar();
 }
 
+initTheme();
+
 if (slug) {
-  initTheme();
   loadMenu(slug);
 } else {
-  initTheme();
-  gateSection.classList.remove("hidden");
-  menuSection.classList.add("hidden");
+  if (gateSection) {
+    gateSection.classList.remove("hidden");
+  }
+  if (menuSection) {
+    menuSection.classList.add("hidden");
+  }
   loadRestaurantLinks();
 }

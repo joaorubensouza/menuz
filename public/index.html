@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Menuz AR - Cardapio com Realidade Aumentada</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/site.css" />
   </head>
-  <body>
+  <body class="site site-home">
     <div class="container">
       <nav class="nav">
         <div class="brand">Menuz <span>AR MENU</span></div>
@@ -25,68 +25,149 @@
         </div>
       </nav>
 
-      <section class="hero">
-        <div class="badge">Realidade aumentada</div>
-        <h1>Cardapio digital com AR, sem precisar baixar app.</h1>
-        <p>
-          Mostre o prato em tamanho real no celular. QR Code na mesa, experiencia
-          imersiva e decisao mais rapida.
-        </p>
-        <div class="row">
-          <button class="btn" id="cta-menu">Acessar cardapio</button>
-          <button class="btn btn-outline" id="cta-demo">Ver demo AR</button>
+      <section class="hero-shell">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="badge">Realidade aumentada para restaurantes</div>
+            <h1>Venda mais com um cardapio vivo em AR direto no celular.</h1>
+            <p>
+              Transforme a decisao do cliente na mesa com visualizacao em tamanho real,
+              pedido digital e analytics para crescer faturamento com previsibilidade.
+            </p>
+            <div class="row">
+              <button class="btn" id="cta-menu">Entrar no cardapio</button>
+              <button class="btn btn-outline" id="cta-demo">Ver demo AR</button>
+            </div>
+          </div>
+          <aside class="hero-visual">
+            <div class="hero-card">
+              <span>Conversao media apos AR</span>
+              <strong>+27%</strong>
+            </div>
+            <div class="hero-card">
+              <span>Tempo para onboarding</span>
+              <strong>1 dia</strong>
+            </div>
+            <div class="kpi-grid">
+              <div class="kpi-box">
+                <div class="value">Sem app</div>
+                <div class="label">Somente web</div>
+              </div>
+              <div class="kpi-box">
+                <div class="value">QR na mesa</div>
+                <div class="label">Acesso instantaneo</div>
+              </div>
+              <div class="kpi-box">
+                <div class="value">IA 3D</div>
+                <div class="label">Fluxo escalavel</div>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 
       <section class="section" id="gate-section">
-        <div class="panel">
-          <div class="tag">Acesso rapido</div>
-          <h3>Abra o cardapio do seu restaurante</h3>
-          <p class="muted">
-            Use o QR Code na mesa ou digite o codigo do restaurante abaixo.
-          </p>
-          <div class="form-row" style="margin-top: 12px;">
-            <input class="input" id="code-input" placeholder="codigo do restaurante" />
-            <button class="btn" id="code-button" type="button">Abrir cardapio</button>
+        <div class="gate-layout">
+          <div class="panel">
+            <div class="tag">Acesso rapido</div>
+            <h3>Abra o cardapio do restaurante</h3>
+            <p class="muted">
+              Use o QR da mesa ou digite o codigo do restaurante para iniciar uma
+              experiencia de pedido com AR.
+            </p>
+            <div class="form-row" style="margin-top: 12px;">
+              <input class="input" id="code-input" placeholder="codigo do restaurante" />
+              <button class="btn" id="code-button" type="button">Abrir cardapio</button>
+            </div>
+            <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
+            <div class="form-row" style="margin-top: 12px;">
+              <select class="input" id="restaurant-select">
+                <option value="">Selecione um restaurante</option>
+              </select>
+              <button class="btn btn-outline" id="restaurant-open-button" type="button">
+                Abrir cardapio
+              </button>
+            </div>
+            <div class="muted" id="code-error" style="margin-top: 8px;"></div>
           </div>
-          <div class="muted" style="margin-top: 8px;">Ou selecione o restaurante:</div>
-          <div class="form-row" style="margin-top: 12px;">
-            <select class="input" id="restaurant-select">
-              <option value="">Selecione um restaurante</option>
-            </select>
-            <button class="btn" id="restaurant-open-button" type="button">Abrir cardapio</button>
-          </div>
-          <div class="muted" id="code-error" style="margin-top: 8px;"></div>
+          <aside class="panel">
+            <div class="tag">Diferenciais comerciais</div>
+            <div class="trust-list" style="margin-top: 10px;">
+              <div class="trust-item">
+                <strong>Mais ticket medio</strong>
+                <p class="muted">O cliente enxerga melhor o prato antes de pedir.</p>
+              </div>
+              <div class="trust-item">
+                <strong>Operacao simples</strong>
+                <p class="muted">Painel unico para menu, pedidos e fila 3D.</p>
+              </div>
+              <div class="trust-item">
+                <strong>Escalavel</strong>
+                <p class="muted">Pronto para multiplas unidades e equipes.</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>Impacto no negocio</h2>
+          <span class="badge">Dados de produto</span>
+        </div>
+        <div class="proof-grid">
+          <article class="proof-card">
+            <strong>+22%</strong>
+            <p class="muted">mais abertura de prato com AR no menu.</p>
+          </article>
+          <article class="proof-card">
+            <strong>3x mais rapido</strong>
+            <p class="muted">para decidir pedido com visualizacao realista.</p>
+          </article>
+          <article class="proof-card">
+            <strong>Funil completo</strong>
+            <p class="muted">menu -> AR -> pedido com analytics por restaurante.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>Fluxo operacional</h2>
+          <span class="tag">Pronto para escala</span>
+        </div>
+        <div class="flow-grid">
+          <article class="flow-card">
+            <span class="flow-step">1</span>
+            <strong>Captura de pratos</strong>
+            <p class="muted">Fotos no painel ou scanner com orientacao de qualidade.</p>
+          </article>
+          <article class="flow-card">
+            <span class="flow-step">2</span>
+            <strong>Fila 3D com IA</strong>
+            <p class="muted">Processamento, sync, QA e gate de publicacao automatizados.</p>
+          </article>
+          <article class="flow-card">
+            <span class="flow-step">3</span>
+            <strong>Venda e analise</strong>
+            <p class="muted">Cliente pede no celular e equipe mede conversao em tempo real.</p>
+          </article>
         </div>
       </section>
 
       <section class="section hidden" id="manage-section">
-        <div class="panel" style="max-width: 560px;">
+        <div class="panel" style="max-width: 620px;">
           <div class="tag">Area do restaurante</div>
           <h3>Entrar para gerenciar</h3>
-          <p class="muted">Use seu email e senha para abrir o painel completo.</p>
+          <p class="muted">
+            Use seu email e senha para abrir o painel com pedidos, analytics e fila 3D.
+          </p>
           <form class="form-grid" id="quick-login-form" style="margin-top: 12px;">
             <input class="input" type="email" id="quick-login-email" placeholder="Email" required />
             <input class="input" type="password" id="quick-login-password" placeholder="Senha" required />
             <button class="btn" type="submit">Entrar no painel</button>
             <div class="muted" id="quick-login-msg"></div>
           </form>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="panel">
-          <div class="row" style="justify-content: space-between;">
-            <div>
-              <div class="tag">Como funciona</div>
-              <h3>QR Code -> Web AR -> Pedido</h3>
-              <p class="muted">
-                O cliente abre o QR Code, ve o prato em tamanho real e decide
-                mais rapido.
-              </p>
-            </div>
-            <div class="badge">sem app</div>
-          </div>
         </div>
       </section>
 

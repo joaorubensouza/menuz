@@ -5,6 +5,7 @@
 1. `npm install`
 2. `npm start`
 3. Open `http://localhost:5170`
+4. (Opcional, recomendado) `npm run smoke:local` para validar endpoints criticos
 
 Demo logins:
 - Master: `admin@menuz.local` / `admin123`
@@ -56,7 +57,16 @@ Demo logins:
   - `GET /api/restaurants/:id/analytics?days=30`
 - Painel admin:
   - Secao `Analytics` com funil (menu -> AR -> pedido), receita e top itens.
-  - Alertas de conversao para decidir a proxima acao comercial.
+- Alertas de conversao para decidir a proxima acao comercial.
+- Observacao:
+  - no `server.js` local e no Worker, os mesmos endpoints principais de analytics/QA/publicacao/automacao estao disponiveis.
+
+## Healthcheck
+
+- Endpoint:
+  - `GET /api/health`
+- Uso:
+  - monitoramento basico para uptime e contagem de entidades.
 
 ## Automacao da fila 3D
 
@@ -101,3 +111,10 @@ Main files:
 - Fonte (editavel): `docs/plano-execucao-menuz.md`
 - PDF gerado: `docs/plano-execucao-menuz.pdf`
 - Regenerar PDF: `node scripts/generate-plan-pdf.mjs`
+
+## CI
+
+- Workflow: `.github/workflows/ci.yml`
+- Executa em `push`/`pull_request`:
+  - checks de sintaxe dos arquivos JS principais
+  - `npm run smoke:local` para validar backend ponta a ponta

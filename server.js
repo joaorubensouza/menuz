@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const fsSync = require("fs");
 const multer = require("multer");
-const { randomUUID, randomBytes, scryptSync, timingSafeEqual } = require("crypto");
+const { randomUUID, randomBytes, scryptSync, timingSafeEqual, createHash } = require("crypto");
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, ".env");
@@ -48,6 +48,7 @@ const CAPTURE_MIN_START_FOOD = Number(process.env.CAPTURE_MIN_START_FOOD || 6);
 const CAPTURE_MIN_START_GENERAL = Number(process.env.CAPTURE_MIN_START_GENERAL || 4);
 const CAPTURE_RECOMMENDED_FOOD = Number(process.env.CAPTURE_RECOMMENDED_FOOD || 12);
 const CAPTURE_RECOMMENDED_GENERAL = Number(process.env.CAPTURE_RECOMMENDED_GENERAL || 8);
+const SESSION_SECRET = (process.env.SESSION_SECRET || "").toString().trim() || "dev-session-secret-change-me";
 const GOOGLE_TRANSLATE_LANGUAGE_MAP = {
   "pt-BR": "pt",
   "en-US": "en",
@@ -65,13 +66,32 @@ const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 24 * 60 * 60 * 1000);
 const LOGIN_WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS || 15 * 60 * 1000);
 const LOGIN_MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS || 6);
 const LOGIN_LOCK_MS = Number(process.env.LOGIN_LOCK_MS || 15 * 60 * 1000);
+const ORDER_WINDOW_MS = Number(process.env.ORDER_WINDOW_MS || 5 * 60 * 1000);
+const ORDER_MAX_PER_WINDOW = Number(process.env.ORDER_MAX_PER_WINDOW || 20);
+const AI_ACTION_WINDOW_MS = Number(process.env.AI_ACTION_WINDOW_MS || 60 * 1000);
+const AI_ACTION_MAX_PER_WINDOW = Number(process.env.AI_ACTION_MAX_PER_WINDOW || 12);
+const PUBLIC_EVENT_WINDOW_MS = Number(process.env.PUBLIC_EVENT_WINDOW_MS || 5 * 60 * 1000);
+const PUBLIC_EVENT_MAX_PER_WINDOW = Number(process.env.PUBLIC_EVENT_MAX_PER_WINDOW || 200);
+const QA_MIN_PUBLISH_SCORE = Number(process.env.QA_MIN_PUBLISH_SCORE || 70);
 
 const tokens = new Map();
 const loginAttempts = new Map();
 const translateRate = new Map();
+const orderRate = new Map();
+const aiActionRate = new Map();
+const publicEventRate = new Map();
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
+const PUBLIC_EVENT_TYPES = new Set([
+  "menu_view",
+  "item_view",
+  "ar_open",
+  "add_to_cart",
+  "order_submit",
+  "qr_scan"
+]);
 const LANGUAGE_CODES = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
 const DEFAULT_LANGUAGE_CODE = "pt-BR";
 const UI_MESSAGE_KEYS = [
@@ -249,27 +269,81 @@ function decodeHtmlEntities(value) {
     .replaceAll("&gt;", ">");
 }
 
-function consumeTranslateRateLimit(ip) {
-  const key = ip || "unknown";
+function consumeInMemoryRateLimit(bucket, key, maxPerWindow, windowMs) {
+  const safeKey = key || "unknown";
   const now = Date.now();
-  const current = translateRate.get(key);
+  const current = bucket.get(safeKey);
 
-  if (!current || now - current.windowStart > TRANSLATE_WINDOW_MS) {
-    translateRate.set(key, { count: 1, windowStart: now });
+  if (!current || now - current.windowStart > windowMs) {
+    bucket.set(safeKey, { count: 1, windowStart: now });
     return { allowed: true, retryAfterSeconds: 0 };
   }
 
-  if (current.count >= TRANSLATE_MAX_PER_WINDOW) {
+  if (current.count >= maxPerWindow) {
     const retryAfterSeconds = Math.max(
       1,
-      Math.ceil((TRANSLATE_WINDOW_MS - (now - current.windowStart)) / 1000)
+      Math.ceil((windowMs - (now - current.windowStart)) / 1000)
     );
     return { allowed: false, retryAfterSeconds };
   }
 
   current.count += 1;
-  translateRate.set(key, current);
+  bucket.set(safeKey, current);
   return { allowed: true, retryAfterSeconds: 0 };
+}
+
+function consumeTranslateRateLimit(ip) {
+  return consumeInMemoryRateLimit(
+    translateRate,
+    ip || "unknown",
+    TRANSLATE_MAX_PER_WINDOW,
+    TRANSLATE_WINDOW_MS
+  );
+}
+
+function consumeOrderRateLimit(ip) {
+  return consumeInMemoryRateLimit(
+    orderRate,
+    ip || "unknown",
+    ORDER_MAX_PER_WINDOW,
+    ORDER_WINDOW_MS
+  );
+}
+
+function consumePublicEventRateLimit(ip) {
+  return consumeInMemoryRateLimit(
+    publicEventRate,
+    ip || "unknown",
+    PUBLIC_EVENT_MAX_PER_WINDOW,
+    PUBLIC_EVENT_WINDOW_MS
+  );
+}
+
+function consumeAiActionRateLimit(userId, action) {
+  return consumeInMemoryRateLimit(
+    aiActionRate,
+    `${action || "unknown"}:${userId || "unknown"}`,
+    AI_ACTION_MAX_PER_WINDOW,
+    AI_ACTION_WINDOW_MS
+  );
+}
+
+function sanitizeTableLabel(value) {
+  const table = sanitizeText(value, 32);
+  if (!TABLE_PATTERN.test(table)) return "";
+  return table;
+}
+
+function sanitizeEventType(value) {
+  const eventType = sanitizeText(value, 40).toLowerCase();
+  if (!PUBLIC_EVENT_TYPES.has(eventType)) return "";
+  return eventType;
+}
+
+function hashEventIp(ip) {
+  return createHash("sha256")
+    .update(`event:${SESSION_SECRET}:${ip || "unknown"}`)
+    .digest("hex");
 }
 
 function sanitizeTranslatePayload(body) {
@@ -411,6 +485,22 @@ function sanitizeCategoryLabels(value) {
   return output;
 }
 
+function sanitizeNullableUrl(value, max = 600) {
+  const text = sanitizeText(value, max);
+  if (!text) return "";
+  if (text.startsWith("/uploads/")) return text;
+  if (isRemoteHttpUrl(text)) return text;
+  return "";
+}
+
+function sanitizePrice(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  if (num < 0) return 0;
+  if (num > 99999) return 99999;
+  return Math.round(num * 100) / 100;
+}
+
 function normalizeRestaurantRecord(raw = {}) {
   const next = { ...raw };
   if (!next.theme || typeof next.theme !== "object") {
@@ -445,7 +535,12 @@ function normalizeRestaurantRecord(raw = {}) {
 
 async function readDb() {
   const raw = await fs.readFile(DATA_PATH, "utf-8");
-  return JSON.parse(raw);
+  const db = JSON.parse(raw);
+  if (!Array.isArray(db.users)) db.users = [];
+  if (!Array.isArray(db.restaurants)) db.restaurants = [];
+  if (!Array.isArray(db.items)) db.items = [];
+  ensureDbShape(db);
+  return db;
 }
 
 async function writeDb(db) {
@@ -544,10 +639,46 @@ function ensureOrders(db) {
   }
 }
 
+function ensurePublicEvents(db) {
+  if (!Array.isArray(db.publicEvents)) {
+    db.publicEvents = [];
+  }
+}
+
+function toModelQualityBand(score) {
+  if (score >= 85) return "excelente";
+  if (score >= 70) return "boa";
+  if (score >= 55) return "aceitavel";
+  return "fraca";
+}
+
+function ensureModelJobQualityFields(job) {
+  if (!job || typeof job !== "object") return;
+  if (!Array.isArray(job.referenceImages)) {
+    job.referenceImages = [];
+  }
+  if (!Array.isArray(job.qaChecklist)) {
+    job.qaChecklist = [];
+  }
+  if (job.qaNotes === undefined || job.qaNotes === null) {
+    job.qaNotes = "";
+  }
+  const score = Number.isFinite(Number(job.qaScore)) ? Number(job.qaScore) : 0;
+  job.qaScore = Math.max(0, Math.min(100, Math.round(score)));
+  job.qaBand = sanitizeText(job.qaBand || toModelQualityBand(job.qaScore), 20) || "fraca";
+}
+
 function ensureModelJobs(db) {
   if (!Array.isArray(db.modelJobs)) {
     db.modelJobs = [];
   }
+  db.modelJobs.forEach(ensureModelJobQualityFields);
+}
+
+function ensureDbShape(db) {
+  ensureOrders(db);
+  ensureModelJobs(db);
+  ensurePublicEvents(db);
 }
 
 async function removeDirIfExists(dirPath) {
@@ -637,6 +768,175 @@ function evaluateCaptureReadiness(item, job) {
     qualityReady,
     progress
   };
+}
+
+async function inspectUploadedModel(urlValue) {
+  const safeUrl = (urlValue || "").toString().trim();
+  if (!safeUrl) return { exists: false, size: 0 };
+  if (safeUrl.startsWith("/uploads/")) {
+    const localPath = urlToUploadFilePath(safeUrl);
+    if (!localPath) return { exists: false, size: 0 };
+    try {
+      const stat = await fs.stat(localPath);
+      return { exists: stat.isFile(), size: Number(stat.size) || 0 };
+    } catch {
+      return { exists: false, size: 0 };
+    }
+  }
+  if (!isRemoteHttpUrl(safeUrl)) return { exists: false, size: 0 };
+  try {
+    const head = await fetch(safeUrl, { method: "HEAD" });
+    if (!head.ok) return { exists: false, size: 0 };
+    const contentLength = Number(head.headers.get("content-length") || 0);
+    return { exists: true, size: Number.isFinite(contentLength) ? contentLength : 0 };
+  } catch {
+    return { exists: false, size: 0 };
+  }
+}
+
+async function evaluateJobQuality(item, job) {
+  let score = 0;
+  const checklist = [];
+  const capture = evaluateCaptureReadiness(item, job);
+  const totalRefs = capture.totalVisualInputs;
+  const isFood = capture.isFoodItem;
+
+  if (capture.qualityReady && totalRefs >= capture.recommendedForQuality + 4) {
+    score += 24;
+    checklist.push("captura_fotos:excelente");
+  } else if (capture.qualityReady) {
+    score += 20;
+    checklist.push("captura_fotos:ok");
+  } else if (capture.readyToStart) {
+    score += 14;
+    checklist.push("captura_fotos:minima");
+  } else if (totalRefs >= Math.max(1, capture.requiredToStart - 2)) {
+    score += 8;
+    checklist.push("captura_fotos:baixa");
+  } else {
+    checklist.push("captura_fotos:insuficiente");
+  }
+
+  if (!capture.readyToStart) score -= 10;
+
+  if (capture.scanCount > 0 && capture.referenceCount > 0) {
+    score += 4;
+    checklist.push("captura_fontes:mista");
+  } else {
+    checklist.push("captura_fontes:unica");
+  }
+
+  const glbInfo = await inspectUploadedModel(job.modelGlb || "");
+  const usdzInfo = await inspectUploadedModel(job.modelUsdz || "");
+  const hasGlb = Boolean(job.modelGlb);
+  const hasUsdz = Boolean(job.modelUsdz);
+
+  if (hasGlb) {
+    score += 18;
+    checklist.push("arquivo_glb:ok");
+  } else {
+    checklist.push("arquivo_glb:ausente");
+  }
+  if (hasUsdz) {
+    score += 18;
+    checklist.push("arquivo_usdz:ok");
+  } else {
+    checklist.push("arquivo_usdz:ausente");
+  }
+
+  if (glbInfo.exists && glbInfo.size >= 150 * 1024 && glbInfo.size <= 40 * 1024 * 1024) {
+    score += 10;
+    checklist.push("peso_glb:ok");
+  } else if (hasGlb) {
+    checklist.push("peso_glb:revisar");
+  }
+
+  if (usdzInfo.exists && usdzInfo.size >= 150 * 1024 && usdzInfo.size <= 40 * 1024 * 1024) {
+    score += 10;
+    checklist.push("peso_usdz:ok");
+  } else if (hasUsdz) {
+    checklist.push("peso_usdz:revisar");
+  }
+
+  if (isFood) {
+    if (totalRefs >= capture.recommendedForQuality) {
+      score += 12;
+      checklist.push("food_refs:alto");
+    } else if (totalRefs >= capture.requiredToStart) {
+      score += 6;
+      checklist.push("food_refs:minimo");
+    } else {
+      score -= 8;
+      checklist.push("food_refs:baixo");
+    }
+
+    if (capture.scanCount < 3) {
+      score -= 4;
+      checklist.push("food_angulo_scanner:baixo");
+    } else {
+      checklist.push("food_angulo_scanner:ok");
+    }
+
+    if (glbInfo.exists && usdzInfo.exists) {
+      const ratio = Math.max(glbInfo.size, usdzInfo.size) / Math.max(1, Math.min(glbInfo.size, usdzInfo.size));
+      if (ratio <= 4) {
+        score += 6;
+        checklist.push("food_consistencia_arquivos:ok");
+      } else if (ratio > 8) {
+        score -= 6;
+        checklist.push("food_consistencia_arquivos:revisar");
+      }
+    }
+  }
+
+  const providerStatus = (job.providerStatus || "").toString().toUpperCase();
+  if (providerStatus === "SUCCEEDED") {
+    score += 10;
+    checklist.push("status_ia:sucesso");
+  } else if (providerStatus === "FAILED") {
+    checklist.push("status_ia:falha");
+  } else {
+    checklist.push("status_ia:pendente");
+  }
+
+  if ((job.notes || "").length >= 20) {
+    score += 4;
+    checklist.push("observacoes:ok");
+  } else {
+    checklist.push("observacoes:curtas");
+  }
+
+  const boundedScore = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    score: boundedScore,
+    band: toModelQualityBand(boundedScore),
+    checklist,
+    capture
+  };
+}
+
+function recordPublicEvent(db, req, payload = {}) {
+  ensurePublicEvents(db);
+  const eventType = sanitizeEventType(payload.eventType || payload.type || "");
+  if (!eventType) return { ok: false, error: "event_invalid" };
+  const restaurantId = sanitizeText(payload.restaurantId, 80);
+  if (!restaurantId) return { ok: false, error: "restaurant_required" };
+  const itemId = sanitizeText(payload.itemId, 80);
+  const tableLabel = sanitizeTableLabel(payload.table || payload.tableLabel || "");
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+
+  db.publicEvents.push({
+    id: `e-${randomUUID()}`,
+    restaurantId,
+    itemId: itemId || "",
+    eventType,
+    tableLabel,
+    ipHash: hashEventIp(getClientIp(req)),
+    userAgent: sanitizeText(req.headers["user-agent"] || "", 220),
+    meta,
+    createdAt: new Date().toISOString()
+  });
+  return { ok: true };
 }
 
 function urlToUploadFilePath(urlValue) {
@@ -893,6 +1193,164 @@ async function downloadModelToUploads(urlValue, extension) {
   return `/uploads/models/${filename}`;
 }
 
+async function autoProcessRestaurantJobs(db, restaurantId, options = {}) {
+  ensureModelJobs(db);
+  const maxJobs = Math.max(1, Math.min(30, Number(options.maxJobs) || 12));
+  const providerMeshy = getAiProvider("meshy");
+  const summary = {
+    restaurantId,
+    total: 0,
+    started: 0,
+    synced: 0,
+    published: 0,
+    skipped: 0,
+    failed: 0,
+    details: []
+  };
+
+  const jobs = db.modelJobs
+    .filter((job) => job.restaurantId === restaurantId && job.autoMode)
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    .slice(0, maxJobs);
+  summary.total = jobs.length;
+
+  for (const job of jobs) {
+    ensureModelJobQualityFields(job);
+    const detail = { jobId: job.id, itemId: job.itemId, action: "skip", status: job.status, reason: "" };
+    const item = findItem(db, job.itemId);
+    if (!item) {
+      summary.failed += 1;
+      detail.action = "error";
+      detail.reason = "item_not_found";
+      summary.details.push(detail);
+      continue;
+    }
+
+    try {
+      if (["enviado", "triagem"].includes(job.status) && !job.providerTaskId) {
+        if (!providerMeshy || !providerMeshy.enabled) {
+          summary.skipped += 1;
+          detail.reason = "provider_not_configured";
+          summary.details.push(detail);
+          continue;
+        }
+        const capture = evaluateCaptureReadiness(item, job);
+        if (!capture.readyToStart) {
+          job.status = "triagem";
+          job.updatedAt = new Date().toISOString();
+          summary.skipped += 1;
+          detail.reason = "capture_insufficient";
+          detail.status = job.status;
+          detail.capture = capture;
+          summary.details.push(detail);
+          continue;
+        }
+        const imageInputs = await buildJobImageInputs(item, job);
+        if (!imageInputs.length) {
+          job.status = "triagem";
+          job.updatedAt = new Date().toISOString();
+          summary.skipped += 1;
+          detail.reason = "image_source_not_found";
+          detail.status = job.status;
+          summary.details.push(detail);
+          continue;
+        }
+
+        const aiModel = sanitizeText(job.aiModel || MESHY_DEFAULT_MODEL, 60);
+        const startResult = await startMeshyImageTo3D(imageInputs, { aiModel });
+        job.provider = "meshy";
+        job.aiModel = aiModel;
+        job.providerTaskId = startResult.taskId;
+        job.providerTaskEndpoint = startResult.endpoint || "";
+        job.providerStatus = "SUBMITTED";
+        job.status = "processando";
+        job.qaScore = 0;
+        job.qaBand = "fraca";
+        job.qaChecklist = [];
+        job.qaNotes = "";
+        job.updatedAt = new Date().toISOString();
+        summary.started += 1;
+        detail.action = "started";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      if (job.provider === "meshy" && job.providerTaskId && ["processando", "triagem"].includes(job.status)) {
+        const sync = await fetchMeshyTask(job.providerTaskId, job.providerTaskEndpoint || "");
+        const taskData = sync.task || {};
+        const taskStatus = (taskData.status || "").toString();
+        job.providerTaskEndpoint = sync.endpoint || job.providerTaskEndpoint || "";
+        job.providerStatus = taskStatus;
+        job.status = mapMeshyStatus(taskStatus);
+
+        if (job.status === "revisao") {
+          const modelUrls = extractMeshyModelUrls(taskData);
+          if (modelUrls.glb && !job.modelGlb) {
+            job.modelGlb = await downloadModelToUploads(modelUrls.glb, ".glb");
+          }
+          if (modelUrls.usdz && !job.modelUsdz) {
+            job.modelUsdz = await downloadModelToUploads(modelUrls.usdz, ".usdz");
+          }
+          const evaluation = await evaluateJobQuality(item, job);
+          job.qaScore = evaluation.score;
+          job.qaBand = evaluation.band;
+          job.qaChecklist = evaluation.checklist;
+          const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+          if (evaluation.score >= QA_MIN_PUBLISH_SCORE && hasRequiredModels) {
+            job.status = "publicado";
+          }
+        }
+
+        job.updatedAt = new Date().toISOString();
+        if (job.status === "publicado") {
+          if (job.modelGlb) item.modelGlb = job.modelGlb;
+          if (job.modelUsdz) item.modelUsdz = job.modelUsdz;
+          summary.published += 1;
+        }
+        summary.synced += 1;
+        detail.action = "synced";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      if (job.status === "revisao") {
+        const evaluation = await evaluateJobQuality(item, job);
+        job.qaScore = evaluation.score;
+        job.qaBand = evaluation.band;
+        job.qaChecklist = evaluation.checklist;
+        const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+        if (evaluation.score >= QA_MIN_PUBLISH_SCORE && hasRequiredModels) {
+          job.status = "publicado";
+          if (job.modelGlb) item.modelGlb = job.modelGlb;
+          if (job.modelUsdz) item.modelUsdz = job.modelUsdz;
+          summary.published += 1;
+        }
+        job.updatedAt = new Date().toISOString();
+        detail.action = "qa_review";
+        detail.status = job.status;
+        detail.reason = "ok";
+        summary.details.push(detail);
+        continue;
+      }
+
+      summary.skipped += 1;
+      detail.reason = "status_not_eligible";
+      summary.details.push(detail);
+    } catch (error) {
+      summary.failed += 1;
+      detail.action = "error";
+      detail.reason = error?.message || "auto_process_failed";
+      summary.details.push(detail);
+    }
+  }
+
+  return summary;
+}
+
 ensureUploads();
 
 app.use((req, res, next) => {
@@ -935,6 +1393,22 @@ app.get("/admin", (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
 });
 
+app.get("/api/health", async (req, res) => {
+  const db = await readDb();
+  res.json({
+    ok: true,
+    now: new Date().toISOString(),
+    counts: {
+      users: Array.isArray(db.users) ? db.users.length : 0,
+      restaurants: Array.isArray(db.restaurants) ? db.restaurants.length : 0,
+      items: Array.isArray(db.items) ? db.items.length : 0,
+      orders: Array.isArray(db.orders) ? db.orders.length : 0,
+      modelJobs: Array.isArray(db.modelJobs) ? db.modelJobs.length : 0,
+      publicEvents: Array.isArray(db.publicEvents) ? db.publicEvents.length : 0
+    }
+  });
+});
+
 app.get("/api/public/restaurants", async (req, res) => {
   const db = await readDb();
   const itemCounts = new Map();
@@ -975,6 +1449,53 @@ app.get("/api/public/item/:id", async (req, res) => {
   }
   const restaurant = findRestaurant(db, item.restaurantId);
   res.json({ item, restaurant });
+});
+
+app.post("/api/public/events", async (req, res) => {
+  const ip = getClientIp(req);
+  const rate = consumePublicEventRateLimit(ip);
+  if (!rate.allowed) {
+    res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: "too_many_events" });
+  }
+
+  const db = await readDb();
+  const restaurantSlug = normalizeSlug(req.body && req.body.restaurantSlug);
+  let restaurantId = sanitizeText(req.body && req.body.restaurantId, 80);
+  if (!restaurantId && restaurantSlug) {
+    const restaurant = db.restaurants.find((entry) => entry.slug === restaurantSlug);
+    if (restaurant) restaurantId = restaurant.id;
+  }
+  if (!restaurantId) {
+    return res.status(400).json({ error: "restaurant_required" });
+  }
+
+  const restaurant = findRestaurant(db, restaurantId);
+  if (!restaurant) {
+    return res.status(404).json({ error: "restaurant_not_found" });
+  }
+
+  const itemId = sanitizeText(req.body && req.body.itemId, 80);
+  if (itemId) {
+    const item = findItem(db, itemId);
+    if (!item || item.restaurantId !== restaurant.id) {
+      return res.status(400).json({ error: "item_invalid" });
+    }
+  }
+
+  const result = recordPublicEvent(db, req, {
+    restaurantId: restaurant.id,
+    itemId,
+    type: req.body && (req.body.type || req.body.eventType),
+    table: req.body && (req.body.table || req.body.tableLabel),
+    meta: req.body && req.body.meta
+  });
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error || "event_invalid" });
+  }
+
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.post("/api/public/translate", async (req, res) => {
@@ -1056,7 +1577,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
 app.get("/api/ai/providers", requireAuth, async (req, res) => {
   res.json({
     providers: getAiProviders(),
-    qa: { minPublishScore: 70 },
+    qa: { minPublishScore: QA_MIN_PUBLISH_SCORE },
     captureGuide: {
       minStartFood: CAPTURE_MIN_START_FOOD,
       minStartGeneral: CAPTURE_MIN_START_GENERAL,
@@ -1089,7 +1610,8 @@ app.get("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
 
 app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
   const db = req.db;
-  const { name, description } = req.body || {};
+  const name = sanitizeText(req.body && req.body.name, 120);
+  const description = sanitizeText(req.body && req.body.description, 500);
   if (!name) {
     return res.status(400).json({ error: "name_required" });
   }
@@ -1105,14 +1627,14 @@ app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
     name,
     slug,
     description: description || "",
-    logo: req.body.logo || "",
-    theme: { accent: req.body.accent || "#D95F2B" },
-    template: req.body.template || "default",
+    logo: sanitizeNullableUrl(req.body.logo),
+    theme: { accent: sanitizeText(req.body.accent, 16) || "#D95F2B" },
+    template: sanitizeText(req.body.template || "default", 60) || "default",
     contact: {
-      address: (req.body.contactAddress || req.body.address || "").toString().trim(),
-      phone: (req.body.contactPhone || req.body.phone || "").toString().trim(),
+      address: sanitizeText(req.body.contactAddress || req.body.address, 220),
+      phone: sanitizeText(req.body.contactPhone || req.body.phone, 80),
       email: sanitizeContactEmail(req.body.contactEmail || req.body.email),
-      website: (req.body.contactWebsite || req.body.website || "").toString().trim()
+      website: sanitizeText(req.body.contactWebsite || req.body.website, 220)
     },
     languageSettings: {
       defaultLanguage: normalizeLanguageCode(req.body.defaultLanguage),
@@ -1129,8 +1651,13 @@ app.post("/api/restaurants", requireAuth, requireMaster, async (req, res) => {
 app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, res) => {
   const db = req.db;
   const restaurant = req.restaurant;
-  restaurant.name = req.body.name || restaurant.name;
-  restaurant.description = req.body.description || restaurant.description;
+  if (req.body.name !== undefined) {
+    const nextName = sanitizeText(req.body.name, 120);
+    if (nextName) restaurant.name = nextName;
+  }
+  if (req.body.description !== undefined) {
+    restaurant.description = sanitizeText(req.body.description, 500);
+  }
   if (req.body.slug) {
     const slug = normalizeSlug(req.body.slug);
     if (slug && slug !== restaurant.slug) {
@@ -1140,18 +1667,20 @@ app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, re
       restaurant.slug = slug;
     }
   }
-  if (req.body.logo !== undefined) restaurant.logo = req.body.logo;
-  if (req.body.accent) restaurant.theme.accent = req.body.accent;
+  if (req.body.logo !== undefined) restaurant.logo = sanitizeNullableUrl(req.body.logo);
+  if (req.body.accent !== undefined) {
+    restaurant.theme.accent = sanitizeText(req.body.accent, 16) || restaurant.theme.accent || "#D95F2B";
+  }
   if (req.body.template !== undefined) {
-    restaurant.template = req.body.template || "default";
+    restaurant.template = sanitizeText(req.body.template || "default", 60) || "default";
   }
   if (req.body.contactAddress !== undefined || req.body.address !== undefined) {
     restaurant.contact = restaurant.contact || {};
-    restaurant.contact.address = (req.body.contactAddress || req.body.address || "").toString().trim();
+    restaurant.contact.address = sanitizeText(req.body.contactAddress || req.body.address, 220);
   }
   if (req.body.contactPhone !== undefined || req.body.phone !== undefined) {
     restaurant.contact = restaurant.contact || {};
-    restaurant.contact.phone = (req.body.contactPhone || req.body.phone || "").toString().trim();
+    restaurant.contact.phone = sanitizeText(req.body.contactPhone || req.body.phone, 80);
   }
   if (req.body.contactEmail !== undefined || req.body.email !== undefined) {
     restaurant.contact = restaurant.contact || {};
@@ -1159,7 +1688,7 @@ app.put("/api/restaurants/:id", requireAuth, authorizeRestaurant, async (req, re
   }
   if (req.body.contactWebsite !== undefined || req.body.website !== undefined) {
     restaurant.contact = restaurant.contact || {};
-    restaurant.contact.website = (req.body.contactWebsite || req.body.website || "").toString().trim();
+    restaurant.contact.website = sanitizeText(req.body.contactWebsite || req.body.website, 220);
   }
   const currentDefaultLanguage =
     restaurant.languageSettings && restaurant.languageSettings.defaultLanguage
@@ -1253,12 +1782,13 @@ app.post(
     const item = {
       id: `i-${randomUUID()}`,
       restaurantId: req.restaurant.id,
-      name,
-      description: description || "",
-      price: Number(price) || 0,
-      image: req.body.image || "",
-      modelGlb: req.body.modelGlb || "",
-      modelUsdz: req.body.modelUsdz || "",
+      name: sanitizeText(name, 160),
+      description: sanitizeText(description, 800),
+      price: sanitizePrice(price),
+      image: sanitizeNullableUrl(req.body.image),
+      modelGlb: sanitizeNullableUrl(req.body.modelGlb),
+      modelUsdz: sanitizeNullableUrl(req.body.modelUsdz),
+      category: sanitizeText(req.body.category, 80),
       scans: []
     };
     db.items.push(item);
@@ -1270,12 +1800,17 @@ app.post(
 app.put("/api/items/:id", requireAuth, authorizeItem, async (req, res) => {
   const db = req.db;
   const item = req.item;
-  if (req.body.name) item.name = req.body.name;
-  if (req.body.description !== undefined) item.description = req.body.description;
-  if (req.body.price !== undefined) item.price = Number(req.body.price) || 0;
-  if (req.body.image !== undefined) item.image = req.body.image;
-  if (req.body.modelGlb !== undefined) item.modelGlb = req.body.modelGlb;
-  if (req.body.modelUsdz !== undefined) item.modelUsdz = req.body.modelUsdz;
+  if (req.body.name !== undefined) {
+    const nextName = sanitizeText(req.body.name, 160);
+    if (!nextName) return res.status(400).json({ error: "name_required" });
+    item.name = nextName;
+  }
+  if (req.body.description !== undefined) item.description = sanitizeText(req.body.description, 800);
+  if (req.body.price !== undefined) item.price = sanitizePrice(req.body.price);
+  if (req.body.image !== undefined) item.image = sanitizeNullableUrl(req.body.image);
+  if (req.body.modelGlb !== undefined) item.modelGlb = sanitizeNullableUrl(req.body.modelGlb);
+  if (req.body.modelUsdz !== undefined) item.modelUsdz = sanitizeNullableUrl(req.body.modelUsdz);
+  if (req.body.category !== undefined) item.category = sanitizeText(req.body.category, 80);
   await writeDb(db);
   res.json({ item });
 });
@@ -1304,9 +1839,17 @@ app.delete("/api/items/:id", requireAuth, authorizeItem, async (req, res) => {
 });
 
 app.post("/api/public/orders", async (req, res) => {
+  const ip = getClientIp(req);
+  const rate = consumeOrderRateLimit(ip);
+  if (!rate.allowed) {
+    res.setHeader("Retry-After", String(rate.retryAfterSeconds));
+    return res.status(429).json({ error: "too_many_orders" });
+  }
+
   const db = await readDb();
-  ensureOrders(db);
-  const { restaurantSlug, table, items } = req.body || {};
+  ensureDbShape(db);
+  const { table, items } = req.body || {};
+  const restaurantSlug = normalizeSlug(req.body && req.body.restaurantSlug);
   if (!restaurantSlug) {
     return res.status(400).json({ error: "restaurant_required" });
   }
@@ -1314,7 +1857,7 @@ app.post("/api/public/orders", async (req, res) => {
   if (!restaurant) {
     return res.status(404).json({ error: "restaurant_not_found" });
   }
-  const tableValue = (table || "").toString().trim();
+  const tableValue = sanitizeTableLabel(table || "");
   if (!tableValue) {
     return res.status(400).json({ error: "table_required" });
   }
@@ -1326,7 +1869,7 @@ app.post("/api/public/orders", async (req, res) => {
   const orderItems = [];
   let total = 0;
 
-  items.forEach((entry) => {
+  items.slice(0, 30).forEach((entry) => {
     const menuItem = menuMap.get(entry.id);
     if (!menuItem) return;
     const qty = Math.max(1, Math.min(50, Number(entry.qty) || 1));
@@ -1354,6 +1897,12 @@ app.post("/api/public/orders", async (req, res) => {
     createdAt: new Date().toISOString()
   };
   db.orders.push(order);
+  recordPublicEvent(db, req, {
+    restaurantId: restaurant.id,
+    type: "order_submit",
+    table: tableValue,
+    meta: { orderId: order.id, items: orderItems.length, total: order.total }
+  });
   await writeDb(db);
   res.json({ order });
 });
@@ -1369,6 +1918,105 @@ app.get(
       .filter((order) => order.restaurantId === req.restaurant.id)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     res.json({ orders });
+  }
+);
+
+app.get(
+  "/api/restaurants/:id/analytics",
+  requireAuth,
+  authorizeRestaurant,
+  async (req, res) => {
+    const db = req.db;
+    ensureDbShape(db);
+    const days = Math.max(1, Math.min(90, Number(req.query.days) || 30));
+    const sinceMs = Date.now() - days * 24 * 60 * 60 * 1000;
+    const sinceIso = new Date(sinceMs).toISOString();
+
+    const orders = db.orders.filter(
+      (order) => order.restaurantId === req.restaurant.id && (order.createdAt || "") >= sinceIso
+    );
+    const events = db.publicEvents.filter(
+      (event) => event.restaurantId === req.restaurant.id && (event.createdAt || "") >= sinceIso
+    );
+
+    const itemNameMap = new Map(
+      db.items
+        .filter((item) => item.restaurantId === req.restaurant.id)
+        .map((item) => [item.id, item.name || "Item"])
+    );
+
+    const eventCounter = Object.create(null);
+    for (const event of events) {
+      const type = sanitizeEventType(event.eventType || event.type || "");
+      if (!type) continue;
+      eventCounter[type] = (eventCounter[type] || 0) + 1;
+    }
+
+    const orderedCounter = new Map();
+    let revenueTotal = 0;
+    for (const order of orders) {
+      revenueTotal += Number(order.total) || 0;
+      const orderItems = Array.isArray(order.items) ? order.items : [];
+      for (const entry of orderItems) {
+        if (!entry || !entry.id) continue;
+        const qty = Math.max(1, Math.min(99, Number(entry.qty) || 1));
+        orderedCounter.set(entry.id, (orderedCounter.get(entry.id) || 0) + qty);
+      }
+    }
+
+    const arCounter = new Map();
+    for (const event of events) {
+      const type = sanitizeEventType(event.eventType || event.type || "");
+      const itemId = sanitizeText(event.itemId, 80);
+      if (type !== "ar_open" || !itemId) continue;
+      arCounter.set(itemId, (arCounter.get(itemId) || 0) + 1);
+    }
+
+    const topArItems = [...arCounter.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([itemId, opens]) => ({
+        itemId,
+        itemName: itemNameMap.get(itemId) || "Item",
+        opens
+      }));
+
+    const topOrderedItems = [...orderedCounter.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([itemId, qty]) => ({
+        itemId,
+        itemName: itemNameMap.get(itemId) || "Item",
+        qty
+      }));
+
+    const menuViews = Number(eventCounter.menu_view || 0);
+    const arOpens = Number(eventCounter.ar_open || 0);
+    const ordersTotal = orders.length;
+
+    const analytics = {
+      windowDays: days,
+      since: sinceIso,
+      summary: {
+        ordersTotal,
+        revenueTotal: Number(revenueTotal.toFixed(2)),
+        avgTicket: ordersTotal > 0 ? Number((revenueTotal / ordersTotal).toFixed(2)) : 0,
+        menuViews,
+        arOpens,
+        addToCart: Number(eventCounter.add_to_cart || 0),
+        itemViews: Number(eventCounter.item_view || 0),
+        orderSubmitEvents: Number(eventCounter.order_submit || 0)
+      },
+      conversion: {
+        menuToAr: menuViews > 0 ? Number(((arOpens / menuViews) * 100).toFixed(2)) : 0,
+        arToOrder: arOpens > 0 ? Number(((ordersTotal / arOpens) * 100).toFixed(2)) : 0,
+        menuToOrder: menuViews > 0 ? Number(((ordersTotal / menuViews) * 100).toFixed(2)) : 0
+      },
+      topArItems,
+      topOrderedItems
+    };
+
+    res.json({ analytics });
   }
 );
 
@@ -1512,6 +2160,10 @@ app.post(
       providerTaskId: "",
       providerTaskEndpoint: "",
       providerStatus: "",
+      qaScore: 0,
+      qaBand: "fraca",
+      qaChecklist: [],
+      qaNotes: "",
       createdAt: now,
       updatedAt: now,
       createdBy: req.user.id
@@ -1540,21 +2192,22 @@ app.put("/api/model-jobs/:id", requireAuth, async (req, res) => {
     "publicado",
     "erro"
   ]);
+  let requestedStatus = null;
   if (req.body.status !== undefined) {
     const status = (req.body.status || "").toString().toLowerCase();
     if (!allowedStatus.has(status)) {
       return res.status(400).json({ error: "status_invalid" });
     }
-    job.status = status;
+    requestedStatus = status;
   }
   if (req.body.notes !== undefined) {
     job.notes = (req.body.notes || "").toString().slice(0, 500);
   }
   if (req.body.modelGlb !== undefined) {
-    job.modelGlb = (req.body.modelGlb || "").toString().trim();
+    job.modelGlb = sanitizeNullableUrl(req.body.modelGlb);
   }
   if (req.body.modelUsdz !== undefined) {
-    job.modelUsdz = (req.body.modelUsdz || "").toString().trim();
+    job.modelUsdz = sanitizeNullableUrl(req.body.modelUsdz);
   }
   if (req.body.provider !== undefined) {
     const providerId = (req.body.provider || "").toString().trim().toLowerCase();
@@ -1566,6 +2219,36 @@ app.put("/api/model-jobs/:id", requireAuth, async (req, res) => {
   }
   if (req.body.aiModel !== undefined) {
     job.aiModel = (req.body.aiModel || "").toString().trim();
+  }
+  if (req.body.qaNotes !== undefined) {
+    job.qaNotes = sanitizeText(req.body.qaNotes, 1000);
+  }
+  if (Array.isArray(req.body.qaChecklist)) {
+    job.qaChecklist = req.body.qaChecklist
+      .map((entry) => sanitizeText(entry, 80))
+      .filter(Boolean)
+      .slice(0, 30);
+  }
+  if (req.body.qaScore !== undefined) {
+    const nextScore = Number(req.body.qaScore);
+    job.qaScore = Number.isFinite(nextScore) ? Math.max(0, Math.min(100, Math.round(nextScore))) : 0;
+    job.qaBand = toModelQualityBand(job.qaScore);
+  }
+
+  if (requestedStatus === "publicado") {
+    const qaScore = Number(job.qaScore) || 0;
+    const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+    if (qaScore < QA_MIN_PUBLISH_SCORE || !hasRequiredModels) {
+      return res.status(400).json({
+        error: "publish_gate_failed",
+        requiredScore: QA_MIN_PUBLISH_SCORE,
+        currentScore: qaScore,
+        hasRequiredModels
+      });
+    }
+  }
+  if (requestedStatus) {
+    job.status = requestedStatus;
   }
   job.updatedAt = new Date().toISOString();
 
@@ -1599,6 +2282,12 @@ app.delete("/api/model-jobs/:id", requireAuth, async (req, res) => {
 });
 
 app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
+  const aiLimit = consumeAiActionRateLimit(req.user && req.user.id, "start");
+  if (!aiLimit.allowed) {
+    res.setHeader("Retry-After", String(aiLimit.retryAfterSeconds));
+    return res.status(429).json({ error: "ai_rate_limited" });
+  }
+
   const db = req.db;
   ensureModelJobs(db);
   const job = db.modelJobs.find((entry) => entry.id === req.params.id);
@@ -1653,6 +2342,10 @@ app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
     job.providerTaskEndpoint = startResult.endpoint || "";
     job.providerStatus = "SUBMITTED";
     job.status = "processando";
+    job.qaScore = 0;
+    job.qaBand = "fraca";
+    job.qaChecklist = [];
+    job.qaNotes = "";
     job.updatedAt = new Date().toISOString();
     await writeDb(db);
     res.json({
@@ -1673,6 +2366,12 @@ app.post("/api/model-jobs/:id/ai/start", requireAuth, async (req, res) => {
 });
 
 app.post("/api/model-jobs/:id/ai/sync", requireAuth, async (req, res) => {
+  const aiLimit = consumeAiActionRateLimit(req.user && req.user.id, "sync");
+  if (!aiLimit.allowed) {
+    res.setHeader("Retry-After", String(aiLimit.retryAfterSeconds));
+    return res.status(429).json({ error: "ai_rate_limited" });
+  }
+
   const db = req.db;
   ensureModelJobs(db);
   const job = db.modelJobs.find((entry) => entry.id === req.params.id);
@@ -1709,7 +2408,17 @@ app.post("/api/model-jobs/:id/ai/sync", requireAuth, async (req, res) => {
         job.modelUsdz = await downloadModelToUploads(modelUrls.usdz, ".usdz");
       }
       if (job.autoMode && req.body && req.body.autoPublish === true) {
-        job.status = "publicado";
+        const itemForQuality = findItem(db, job.itemId);
+        if (itemForQuality) {
+          const evaluation = await evaluateJobQuality(itemForQuality, job);
+          job.qaScore = evaluation.score;
+          job.qaBand = evaluation.band;
+          job.qaChecklist = evaluation.checklist;
+          const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+          if (evaluation.score >= QA_MIN_PUBLISH_SCORE && hasRequiredModels) {
+            job.status = "publicado";
+          }
+        }
       }
     }
 
@@ -1731,6 +2440,101 @@ app.post("/api/model-jobs/:id/ai/sync", requireAuth, async (req, res) => {
     res.status(502).json({ error: "ai_sync_failed", detail: err.message });
   }
 });
+
+app.post("/api/model-jobs/:id/qa/evaluate", requireAuth, async (req, res) => {
+  const db = req.db;
+  ensureModelJobs(db);
+  const job = db.modelJobs.find((entry) => entry.id === req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "job_not_found" });
+  }
+  if (!canAccessRestaurant(req.user, job.restaurantId)) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const item = findItem(db, job.itemId);
+  if (!item) {
+    return res.status(400).json({ error: "item_not_found" });
+  }
+
+  const evaluation = await evaluateJobQuality(item, job);
+  const extraChecks = Array.isArray(req.body && req.body.extraChecklist)
+    ? req.body.extraChecklist
+        .map((entry) => sanitizeText(entry, 80))
+        .filter(Boolean)
+        .slice(0, 20)
+    : [];
+  job.qaScore = evaluation.score;
+  job.qaBand = evaluation.band;
+  job.qaChecklist = [...evaluation.checklist, ...extraChecks];
+  if (req.body && req.body.qaNotes !== undefined) {
+    job.qaNotes = sanitizeText(req.body.qaNotes, 1000);
+  }
+  job.updatedAt = new Date().toISOString();
+  await writeDb(db);
+  res.json({ job, evaluation, capture: evaluation.capture || null });
+});
+
+app.post("/api/model-jobs/:id/publish", requireAuth, async (req, res) => {
+  const db = req.db;
+  ensureModelJobs(db);
+  const job = db.modelJobs.find((entry) => entry.id === req.params.id);
+  if (!job) {
+    return res.status(404).json({ error: "job_not_found" });
+  }
+  if (!canAccessRestaurant(req.user, job.restaurantId)) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const item = findItem(db, job.itemId);
+  if (!item) {
+    return res.status(400).json({ error: "item_not_found" });
+  }
+
+  const evaluation = await evaluateJobQuality(item, job);
+  job.qaScore = evaluation.score;
+  job.qaBand = evaluation.band;
+  job.qaChecklist = evaluation.checklist;
+
+  const hasRequiredModels = Boolean(job.modelGlb) && Boolean(job.modelUsdz);
+  if (!hasRequiredModels || evaluation.score < QA_MIN_PUBLISH_SCORE) {
+    job.status = "revisao";
+    job.updatedAt = new Date().toISOString();
+    await writeDb(db);
+    return res.status(400).json({
+      error: "publish_gate_failed",
+      requiredScore: QA_MIN_PUBLISH_SCORE,
+      currentScore: evaluation.score,
+      hasRequiredModels,
+      checklist: evaluation.checklist
+    });
+  }
+
+  job.status = "publicado";
+  job.updatedAt = new Date().toISOString();
+  if (job.modelGlb) item.modelGlb = job.modelGlb;
+  if (job.modelUsdz) item.modelUsdz = job.modelUsdz;
+  await writeDb(db);
+  res.json({
+    ok: true,
+    status: "publicado",
+    qaScore: evaluation.score,
+    qaBand: evaluation.band
+  });
+});
+
+app.post(
+  "/api/restaurants/:id/model-jobs/auto-process",
+  requireAuth,
+  authorizeRestaurant,
+  async (req, res) => {
+    const db = req.db;
+    ensureModelJobs(db);
+    const summary = await autoProcessRestaurantJobs(db, req.restaurant.id, {
+      maxJobs: req.body && req.body.maxJobs
+    });
+    await writeDb(db);
+    res.json({ ok: true, summary });
+  }
+);
 
 app.put("/api/orders/:id", requireAuth, async (req, res) => {
   const db = req.db;
