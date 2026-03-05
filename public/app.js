@@ -23,6 +23,9 @@ const menuSection = document.getElementById("menu-section");
 const menuList = document.getElementById("menu-list");
 const menuTitle = document.getElementById("menu-title");
 const menuSubtitle = document.getElementById("menu-subtitle");
+const menuSearch = document.getElementById("menu-search");
+const menuCategories = document.getElementById("menu-categories");
+const menuFilterEmpty = document.getElementById("menu-filter-empty");
 
 const ctaMenu = document.getElementById("cta-menu");
 const ctaDemo = document.getElementById("cta-demo");
@@ -40,6 +43,8 @@ const orderMessage = document.getElementById("order-message");
 let menuItems = [];
 let cart = [];
 let publicRestaurants = [];
+let menuSearchTerm = "";
+let menuActiveCategory = "__all__";
 const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table";
 
@@ -224,6 +229,13 @@ if (restaurantOpenButton) {
 if (restaurantSelect) {
   restaurantSelect.addEventListener("change", () => {
     setCodeMessage("", "muted");
+  });
+}
+
+if (menuSearch) {
+  menuSearch.addEventListener("input", () => {
+    menuSearchTerm = menuSearch.value || "";
+    refreshMenuList();
   });
 }
 
@@ -572,9 +584,120 @@ function buildItemUrl(itemId) {
   return `/item.html?${itemParams.toString()}`;
 }
 
+function resetMenuFilters() {
+  menuSearchTerm = "";
+  menuActiveCategory = "__all__";
+  if (menuSearch) {
+    menuSearch.value = "";
+  }
+}
+
+function normalizeMenuText(value) {
+  return (value || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function collectMenuCategories(items) {
+  const unique = [];
+  const seen = new Set();
+  (items || []).forEach((item) => {
+    const raw = (item && item.category ? item.category : "").toString().trim();
+    if (!raw) return;
+    const key = normalizeMenuText(raw);
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(raw);
+  });
+  return unique.sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+function renderMenuCategories(items) {
+  if (!menuCategories) return;
+  menuCategories.replaceChildren();
+
+  const categories = collectMenuCategories(items);
+  const allChip = createEl("button", "menu-chip", "Todos");
+  allChip.type = "button";
+  if (menuActiveCategory === "__all__") allChip.classList.add("active");
+  allChip.addEventListener("click", () => {
+    menuActiveCategory = "__all__";
+    refreshMenuList();
+  });
+  menuCategories.appendChild(allChip);
+
+  categories.forEach((category) => {
+    const chip = createEl("button", "menu-chip", category);
+    chip.type = "button";
+    if (normalizeMenuText(menuActiveCategory) === normalizeMenuText(category)) {
+      chip.classList.add("active");
+    }
+    chip.addEventListener("click", () => {
+      menuActiveCategory = category;
+      refreshMenuList();
+    });
+    menuCategories.appendChild(chip);
+  });
+}
+
+function getFilteredMenuItems() {
+  const term = normalizeMenuText(menuSearchTerm);
+  const useCategory = menuActiveCategory !== "__all__";
+  const categoryKey = normalizeMenuText(menuActiveCategory);
+
+  return menuItems.filter((item) => {
+    const itemCategory = normalizeMenuText(item && item.category ? item.category : "");
+    if (useCategory && itemCategory !== categoryKey) {
+      return false;
+    }
+    if (!term) return true;
+    const haystack = normalizeMenuText(`${item.name || ""} ${item.description || ""}`);
+    return haystack.includes(term);
+  });
+}
+
+function updateMenuSubtitle(filteredCount, totalCount) {
+  if (!menuSubtitle) return;
+  if (!totalCount) {
+    menuSubtitle.textContent = "0 itens no cardapio";
+    return;
+  }
+  if (filteredCount === totalCount) {
+    menuSubtitle.textContent = `${totalCount} itens no cardapio`;
+    return;
+  }
+  menuSubtitle.textContent = `${filteredCount} de ${totalCount} itens`;
+}
+
+function refreshMenuList() {
+  if (!menuList) return;
+  renderMenuCategories(menuItems);
+  if (menuItems.length === 0) {
+    renderMenuCards([]);
+    if (menuFilterEmpty) menuFilterEmpty.classList.add("hidden");
+    updateMenuSubtitle(0, 0);
+    return;
+  }
+
+  const filteredItems = getFilteredMenuItems();
+  updateMenuSubtitle(filteredItems.length, menuItems.length);
+
+  if (filteredItems.length === 0) {
+    menuList.replaceChildren();
+    if (menuFilterEmpty) menuFilterEmpty.classList.remove("hidden");
+    return;
+  }
+
+  if (menuFilterEmpty) menuFilterEmpty.classList.add("hidden");
+  renderMenuCards(filteredItems);
+}
+
 function renderMenuLoading() {
   if (!menuList) return;
   menuList.replaceChildren();
+  if (menuFilterEmpty) menuFilterEmpty.classList.add("hidden");
   const loadingPanel = createEl("div", "panel");
   loadingPanel.appendChild(createEl("div", "tag", "Carregando"));
   loadingPanel.appendChild(createEl("p", "muted", "Buscando itens do cardapio..."));
@@ -651,6 +774,9 @@ async function loadMenu(slugValue) {
     if (!res.ok) {
       gateSection.classList.remove("hidden");
       menuSection.classList.add("hidden");
+      menuItems = [];
+      resetMenuFilters();
+      renderMenuCategories([]);
       setCodeMessage("Restaurante nao encontrado.", "error");
       loadRestaurantLinks();
       return;
@@ -670,6 +796,7 @@ async function loadMenu(slugValue) {
     }
 
     menuItems = items;
+    resetMenuFilters();
     gateSection.classList.add("hidden");
     menuSection.classList.remove("hidden");
 
@@ -691,12 +818,15 @@ async function loadMenu(slugValue) {
       });
     }
 
-    renderMenuCards(menuItems);
+    refreshMenuList();
     loadCart();
     updateOrderBar();
   } catch (_err) {
     gateSection.classList.remove("hidden");
     menuSection.classList.add("hidden");
+    menuItems = [];
+    resetMenuFilters();
+    renderMenuCategories([]);
     setCodeMessage("Falha de rede ao carregar o cardapio.", "error");
     loadRestaurantLinks();
   }

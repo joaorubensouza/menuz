@@ -80,6 +80,7 @@ const translateRate = new Map();
 const orderRate = new Map();
 const aiActionRate = new Map();
 const publicEventRate = new Map();
+let dbWriteQueue = Promise.resolve();
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MODEL_EXTENSIONS = new Set([".glb", ".usdz"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -533,6 +534,20 @@ function normalizeRestaurantRecord(raw = {}) {
   return next;
 }
 
+function sanitizePublicItemRecord(raw = {}) {
+  const item = raw || {};
+  return {
+    id: sanitizeText(item.id, 80),
+    name: sanitizeText(item.name, 160),
+    description: sanitizeText(item.description, 800),
+    price: sanitizePrice(item.price),
+    image: sanitizeNullableUrl(item.image),
+    modelGlb: sanitizeNullableUrl(item.modelGlb),
+    modelUsdz: sanitizeNullableUrl(item.modelUsdz),
+    category: sanitizeText(item.category, 80)
+  };
+}
+
 async function readDb() {
   const raw = await fs.readFile(DATA_PATH, "utf-8");
   const db = JSON.parse(raw);
@@ -544,7 +559,14 @@ async function readDb() {
 }
 
 async function writeDb(db) {
-  await fs.writeFile(DATA_PATH, JSON.stringify(db, null, 2));
+  const snapshot = JSON.stringify(db, null, 2);
+  const runWrite = async () => {
+    const tempPath = `${DATA_PATH}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tempPath, snapshot, "utf-8");
+    await fs.rename(tempPath, DATA_PATH);
+  };
+  dbWriteQueue = dbWriteQueue.then(runWrite, runWrite);
+  await dbWriteQueue;
 }
 
 function sanitizeUser(user) {
@@ -1398,12 +1420,16 @@ app.use(express.static(PUBLIC_DIR));
 app.use("/uploads", express.static(UPLOADS_DIR));
 
 app.get("/r/:slug", async (req, res) => {
+  const safeSlug = normalizeSlug(req.params.slug);
+  if (!safeSlug) {
+    return res.redirect("/");
+  }
   const params = new URLSearchParams(req.query);
-  params.set("r", req.params.slug);
+  params.set("r", safeSlug);
 
   try {
     const db = await readDb();
-    const restaurant = db.restaurants.find((r) => r.slug === req.params.slug);
+    const restaurant = db.restaurants.find((r) => r.slug === safeSlug);
     if (restaurant && restaurant.template === "topo-do-mundo") {
       return res.redirect(`/templates/topo-do-mundo.html?${params.toString()}`);
     }
@@ -1461,12 +1487,18 @@ app.get("/api/public/restaurants", async (req, res) => {
 });
 
 app.get("/api/public/restaurant/:slug", async (req, res) => {
+  const safeSlug = normalizeSlug(req.params.slug);
+  if (!safeSlug) {
+    return res.status(404).json({ error: "restaurant_not_found" });
+  }
   const db = await readDb();
-  const restaurant = db.restaurants.find((r) => r.slug === req.params.slug);
+  const restaurant = db.restaurants.find((r) => r.slug === safeSlug);
   if (!restaurant) {
     return res.status(404).json({ error: "restaurant_not_found" });
   }
-  const items = db.items.filter((i) => i.restaurantId === restaurant.id);
+  const items = db.items
+    .filter((i) => i.restaurantId === restaurant.id)
+    .map((item) => sanitizePublicItemRecord(item));
   res.json({ restaurant: normalizeRestaurantRecord(restaurant), items });
 });
 
@@ -1477,7 +1509,17 @@ app.get("/api/public/item/:id", async (req, res) => {
     return res.status(404).json({ error: "item_not_found" });
   }
   const restaurant = findRestaurant(db, item.restaurantId);
-  res.json({ item, restaurant });
+  if (!restaurant) {
+    return res.status(404).json({ error: "restaurant_not_found" });
+  }
+  const requestedSlug = normalizeSlug(req.query && req.query.r);
+  if (requestedSlug && restaurant.slug !== requestedSlug) {
+    return res.status(404).json({ error: "item_not_found" });
+  }
+  res.json({
+    item: sanitizePublicItemRecord(item),
+    restaurant: normalizeRestaurantRecord(restaurant)
+  });
 });
 
 app.post("/api/public/events", async (req, res) => {

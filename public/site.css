@@ -420,6 +420,39 @@ textarea:focus {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
 
+.menu-toolbar {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.menu-search {
+  max-width: 520px;
+}
+
+.menu-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.menu-chip {
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.menu-chip.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+}
+
 .card {
   border: 1px solid var(--stroke);
   border-radius: 20px;

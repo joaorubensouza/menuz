@@ -871,7 +871,16 @@ function buildSection(title, items) {
       ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy" />`
       : '<span class="thumb-placeholder">Imagem em breve</span>';
 
-    const itemArUrl = `/item.html?id=${encodeURIComponent(item.id)}&openAr=1`;
+    const itemArParams = new URLSearchParams();
+    itemArParams.set("id", item.id);
+    itemArParams.set("openAr", "1");
+    if (slug) {
+      itemArParams.set("r", slug);
+    }
+    if (tableFromUrl) {
+      itemArParams.set("mesa", tableFromUrl);
+    }
+    const itemArUrl = `/item.html?${itemArParams.toString()}`;
 
     row.innerHTML = `
       <div class="item-copy">

@@ -21,6 +21,10 @@ let arOpenTracked = false;
 const ua = navigator.userAgent || "";
 const isIOS = /iPhone|iPad|iPod/i.test(ua);
 const isAndroid = /Android/i.test(ua);
+const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL"
+});
 
 function trackPublicEvent(type, payload = {}) {
   const body = JSON.stringify({
@@ -46,7 +50,12 @@ function trackPublicEvent(type, payload = {}) {
 
 function applyTheme() {
   const allowed = ["amber", "ocean", "wine"];
-  const savedTheme = localStorage.getItem(THEME_KEY) || "amber";
+  let savedTheme = "amber";
+  try {
+    savedTheme = localStorage.getItem(THEME_KEY) || "amber";
+  } catch (_err) {
+    savedTheme = "amber";
+  }
   const nextTheme = allowed.includes(savedTheme) ? savedTheme : "amber";
   document.body.setAttribute("data-theme", nextTheme);
 }
@@ -115,18 +124,38 @@ function updateBackLink(restaurant) {
   backLink.href = `/r/${encodeURIComponent(slug)}${queryString ? `?${queryString}` : ""}`;
 }
 
+function buildPublicItemUrl() {
+  const safeItemId = encodeURIComponent(itemId || "");
+  const query = new URLSearchParams();
+  if (slugParam) {
+    query.set("r", slugParam);
+  }
+  const queryString = query.toString();
+  return `/api/public/item/${safeItemId}${queryString ? `?${queryString}` : ""}`;
+}
+
 async function loadItem() {
   if (!itemId) {
     setFallback("Item nao encontrado.");
     return;
   }
-  const res = await fetch(`/api/public/item/${itemId}`);
+  let res;
+  try {
+    res = await fetch(buildPublicItemUrl());
+  } catch (_err) {
+    setFallback("Falha de conexao ao carregar o item.");
+    return;
+  }
   if (!res.ok) {
     setFallback("Item nao encontrado.");
     return;
   }
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   const { item, restaurant } = data;
+  if (!item) {
+    setFallback("Item nao encontrado.");
+    return;
+  }
   trackPublicEvent("item_view", {
     restaurantSlug: (restaurant && restaurant.slug) || slugParam || "",
     itemId: item.id,
@@ -137,8 +166,7 @@ async function loadItem() {
   itemName.textContent = item.name;
   itemDesc.textContent = item.description || "";
   const priceValue = Number(item.price);
-  const priceText = Number.isFinite(priceValue) ? priceValue.toFixed(2) : "0.00";
-  itemPrice.textContent = `R$ ${priceText}`;
+  itemPrice.textContent = PRICE_FORMATTER.format(Number.isFinite(priceValue) ? priceValue : 0);
   if (restaurant) {
     itemRestaurant.textContent = restaurant.name;
   }
