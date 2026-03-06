@@ -703,12 +703,25 @@ body {
 }
 
 .drawer-lang {
+  border: 1px solid var(--stroke);
+  background: #f7f8fb;
+  border-radius: 999px;
+  padding: 6px 10px;
   font-size: 12px;
   font-weight: 700;
   color: #334;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.drawer-lang:hover,
+.drawer-lang:focus-visible {
+  border-color: var(--accent);
+  background: #fff;
+  outline: 0;
 }
 
 .drawer-brand {
@@ -724,6 +737,10 @@ body {
   list-style: none;
   display: grid;
   gap: 12px;
+  margin: 0;
+  padding: 0;
+  align-content: start;
+  grid-auto-rows: max-content;
 }
 
 .drawer-info li {

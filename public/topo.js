@@ -32,9 +32,6 @@ const heroNext = document.getElementById("hero-next");
 
 const restaurantName = document.getElementById("restaurant-name");
 const restaurantDesc = document.getElementById("restaurant-desc");
-const languageToggle = document.getElementById("language-toggle");
-const languageBadge = document.getElementById("language-badge");
-const languageLabel = document.getElementById("language-label");
 const shareToggle = document.getElementById("share-toggle");
 const modeStrip = document.getElementById("mode-strip");
 const categoryList = document.getElementById("category-list");
@@ -52,12 +49,12 @@ const cartSubmit = document.getElementById("cart-submit");
 const cartMessage = document.getElementById("cart-message");
 
 const LANGUAGES = [
-  { code: "pt-BR", tag: "PT", label: "Portugues do Brasil", subtitle: "Padrao do restaurante" },
+  { code: "pt-BR", tag: "PT", label: "Português do Brasil", subtitle: "Padrão do restaurante" },
   { code: "en-US", tag: "EN", label: "English", subtitle: "For foreigners" },
-  { code: "es-ES", tag: "ES", label: "Espanol", subtitle: "Para extranjeros" },
-  { code: "fr-FR", tag: "FR", label: "Francais", subtitle: "Pour les etrangers" },
+  { code: "es-ES", tag: "ES", label: "Español", subtitle: "Para extranjeros" },
+  { code: "fr-FR", tag: "FR", label: "Français", subtitle: "Pour les étrangers" },
   { code: "it-IT", tag: "IT", label: "Italiano", subtitle: "Per gli stranieri" },
-  { code: "de-DE", tag: "DE", label: "Deutsch", subtitle: "Fur Auslander" }
+  { code: "de-DE", tag: "DE", label: "Deutsch", subtitle: "Für Ausländer" }
 ];
 
 const MESSAGES = {
@@ -65,7 +62,7 @@ const MESSAGES = {
     searchPlaceholder: "Buscar no cardapio",
     modeMenu: "Menu",
     menuPersonality: "Menu Personnalite",
-    all: "All",
+    all: "Todos",
     ar: "Realidade Aumentada",
     add: "+ pedido",
     noItemsFound: "Nenhum item encontrado para este filtro.",
@@ -397,18 +394,9 @@ function getLanguageConfig(code = state.language) {
 
 function updateLanguageButton() {
   const lang = getLanguageConfig();
-  if (languageToggle) {
-    languageToggle.setAttribute("aria-label", `${t("language")}: ${lang.label || lang.code}`);
-    languageToggle.setAttribute("title", `${t("language")}: ${lang.label || lang.code}`);
-  }
-  if (languageBadge) {
-    languageBadge.textContent = lang.tag || lang.code.split("-")[0] || "LG";
-  }
-  if (languageLabel) {
-    languageLabel.textContent = t("language");
-  } else if (languageToggle) {
-    languageToggle.textContent = t("language");
-  }
+  if (!drawerLang) return;
+  drawerLang.setAttribute("aria-label", `${t("language")}: ${lang.label || lang.code}`);
+  drawerLang.setAttribute("title", `${t("language")}: ${lang.label || lang.code}`);
 }
 
 function getEnabledLanguages() {
@@ -1251,10 +1239,12 @@ menuToggle.addEventListener("click", () => {
 drawerClose.addEventListener("click", closeDrawer);
 sideOverlay.addEventListener("click", closeDrawer);
 
-languageToggle.addEventListener("click", () => {
-  closeDrawer();
-  openLanguageModal();
-});
+if (drawerLang) {
+  drawerLang.addEventListener("click", () => {
+    closeDrawer();
+    openLanguageModal();
+  });
+}
 
 langClose.addEventListener("click", closeLanguageModal);
 langModal.addEventListener("click", (event) => {
