@@ -15,6 +15,7 @@ const scaleValue = document.getElementById("scaleValue");
 const scaleDown = document.getElementById("scaleDown");
 const scaleUp = document.getElementById("scaleUp");
 const scaleReset = document.getElementById("scaleReset");
+const itemCanonical = document.getElementById("item-canonical");
 
 const itemName = document.getElementById("item-name");
 const itemDesc = document.getElementById("item-desc");
@@ -38,6 +39,13 @@ const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL"
 });
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
 
 function trackPublicEvent(type, payload = {}) {
   const body = JSON.stringify({
@@ -231,6 +239,7 @@ function buildPublicItemUrl() {
 }
 
 async function loadItem() {
+  if (itemCanonical) itemCanonical.href = window.location.href;
   if (!itemId) {
     setFallback("Item nao encontrado.");
     return;
@@ -358,4 +367,5 @@ if (modelViewer) {
 }
 
 applyTheme();
+registerServiceWorker();
 loadItem();

@@ -4,10 +4,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Menuz AR - Visualizar prato</title>
+    <meta
+      name="description"
+      content="Visualizacao AR de prato com ajuste de escala e retorno rapido ao cardapio digital."
+    />
+    <meta name="theme-color" content="#c95f2f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Menuz AR - Visualizar prato" />
+    <meta property="og:description" content="Abra o item em realidade aumentada e ajuste a escala." />
+    <meta property="og:image" content="/assets/landing/hero-food.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Menuz AR - Visualizar prato" />
+    <meta name="twitter:description" content="Abra o item em realidade aumentada e ajuste a escala." />
+    <meta name="twitter:image" content="/assets/landing/hero-food.webp" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="canonical" id="item-canonical" href="/item.html" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://unpkg.com" />
     <link rel="stylesheet" href="/site.css" />
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   </head>
   <body class="site site-item">
+    <a class="skip-link" href="#item-main">Pular para o conteudo</a>
     <div class="container">
       <nav class="nav">
         <div class="brand">Menuz <span>AR MENU</span></div>
@@ -16,7 +35,7 @@
         </div>
       </nav>
 
-      <section class="section">
+      <section class="section" id="item-main">
         <div class="section-title">
           <h2>Visualizacao AR</h2>
           <span class="badge">Item</span>

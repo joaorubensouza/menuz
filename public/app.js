@@ -9,6 +9,13 @@ const PRICE_FORMATTER = new Intl.NumberFormat("pt-BR", {
   currency: "BRL"
 });
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 const gateSection = document.getElementById("gate-section");
 const codeInput = document.getElementById("code-input");
 const codeButton = document.getElementById("code-button");
@@ -52,6 +59,7 @@ let menuSearchTerm = "";
 let menuActiveCategory = "__all__";
 const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table";
+let menuSearchDebounceTimer = null;
 
 function trackPublicEvent(type, payload = {}) {
   const body = JSON.stringify({
@@ -73,6 +81,13 @@ function trackPublicEvent(type, payload = {}) {
     headers: { "Content-Type": "application/json" },
     body
   }).catch(() => {});
+}
+
+function debounce(fn, waitMs = 160) {
+  return (...args) => {
+    clearTimeout(menuSearchDebounceTimer);
+    menuSearchDebounceTimer = setTimeout(() => fn(...args), waitMs);
+  };
 }
 
 function applyTheme(theme) {
@@ -278,10 +293,18 @@ if (restaurantSelect) {
 }
 
 if (menuSearch) {
-  menuSearch.addEventListener("input", () => {
+  const onSearchInput = debounce(() => {
     menuSearchTerm = menuSearch.value || "";
+    if (menuSearchTerm.trim().length >= 2) {
+      trackPublicEvent("search_use", {
+        restaurantSlug: slug || "",
+        table: tableParam || "",
+        meta: { termLength: menuSearchTerm.trim().length }
+      });
+    }
     refreshMenuList();
-  });
+  }, 140);
+  menuSearch.addEventListener("input", onSearchInput);
 }
 
 if (manageToggle && manageSection) {
@@ -890,6 +913,7 @@ async function loadMenu(slugValue) {
 
 initTheme();
 initStageFlow();
+registerServiceWorker();
 
 if (slug) {
   loadMenu(slug);

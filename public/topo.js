@@ -47,6 +47,17 @@ const tableInput = document.getElementById("table-input");
 const cartClear = document.getElementById("cart-clear");
 const cartSubmit = document.getElementById("cart-submit");
 const cartMessage = document.getElementById("cart-message");
+const backTopButton = document.getElementById("back-top");
+const srLive = document.getElementById("sr-live");
+const canonicalLink = document.getElementById("canonical-link");
+const metaDescription = document.getElementById("meta-description");
+const ogTitle = document.getElementById("og-title");
+const ogDescription = document.getElementById("og-description");
+const ogImage = document.getElementById("og-image");
+const twitterTitle = document.getElementById("twitter-title");
+const twitterDescription = document.getElementById("twitter-description");
+const twitterImage = document.getElementById("twitter-image");
+const restaurantJsonLd = document.getElementById("restaurant-jsonld");
 
 const LANGUAGES = [
   { code: "pt-BR", tag: "PT", label: "Português do Brasil", subtitle: "Padrão do restaurante" },
@@ -297,6 +308,14 @@ function saveTranslationCache(cache) {
   }
 }
 
+const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart_template";
+const tableKey = slug ? `menuz_table_${slug}` : "menuz_table_template";
+const categoryKey = slug ? `menuz_category_${slug}` : "menuz_category_template";
+const searchTermKey = slug ? `menuz_search_${slug}` : "menuz_search_template";
+let searchDebounceTimer = null;
+let lastFocusedElement = null;
+const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
+
 const state = {
   restaurant: null,
   items: [],
@@ -304,7 +323,13 @@ const state = {
   baseDescription: "",
   baseCategories: [],
   cart: [],
-  selectedCategory: "all",
+  selectedCategory: (() => {
+    try {
+      return localStorage.getItem(categoryKey) || "all";
+    } catch {
+      return "all";
+    }
+  })(),
   categories: [],
   modeItems: [],
   heroImages: [],
@@ -321,9 +346,6 @@ const HERO_FALLBACK_IMAGE =
 if (!LANGUAGES.some((lang) => lang.code === state.language)) {
   state.language = "pt-BR";
 }
-
-const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart_template";
-const tableKey = slug ? `menuz_table_${slug}` : "menuz_table_template";
 
 function trackPublicEvent(type, payload = {}) {
   const body = JSON.stringify({
@@ -347,10 +369,44 @@ function trackPublicEvent(type, payload = {}) {
   }).catch(() => {});
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
+function announce(message) {
+  if (!srLive || !message) return;
+  srLive.textContent = "";
+  setTimeout(() => {
+    srLive.textContent = message;
+  }, 20);
+}
+
+function debounce(fn, waitMs = 180) {
+  return (...args) => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => fn(...args), waitMs);
+  };
+}
+
+function getCurrencyLocale() {
+  const localeMap = {
+    "pt-BR": "pt-BR",
+    "en-US": "en-US",
+    "es-ES": "es-ES",
+    "fr-FR": "fr-FR",
+    "it-IT": "it-IT",
+    "de-DE": "de-DE"
+  };
+  return localeMap[state.language] || "pt-BR";
+}
+
 function formatPrice(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return "0,00";
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!Number.isFinite(n)) return "0.00";
+  return n.toLocaleString(getCurrencyLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function escapeHtml(value) {
@@ -369,6 +425,46 @@ function normalizeTextKey(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function setCanonicalUrl() {
+  if (!canonicalLink) return;
+  canonicalLink.href = window.location.href;
+}
+
+function setSeoMeta({ title, description, image }) {
+  const safeTitle = (title || "Cardapio digital").toString().trim();
+  const safeDescription = (description || "Cardapio digital com pedido rapido e experiencia AR.")
+    .toString()
+    .trim()
+    .slice(0, 180);
+  const safeImage = (image || "/assets/landing/hero-restaurant.webp").toString().trim();
+  document.title = safeTitle;
+  if (metaDescription) metaDescription.setAttribute("content", safeDescription);
+  if (ogTitle) ogTitle.setAttribute("content", safeTitle);
+  if (ogDescription) ogDescription.setAttribute("content", safeDescription);
+  if (ogImage) ogImage.setAttribute("content", safeImage);
+  if (twitterTitle) twitterTitle.setAttribute("content", safeTitle);
+  if (twitterDescription) twitterDescription.setAttribute("content", safeDescription);
+  if (twitterImage) twitterImage.setAttribute("content", safeImage);
+}
+
+function updateStructuredData(restaurant, heroImage) {
+  if (!restaurantJsonLd || !restaurant) return;
+  const contact = getRestaurantContact();
+  const payload = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    name: restaurant.name || "Cardapio",
+    description: (restaurant.description || "").toString().slice(0, 220),
+    image: heroImage || undefined,
+    url: window.location.href,
+    telephone: contact.phone !== "-" ? contact.phone : undefined,
+    email: contact.email !== "-" ? contact.email : undefined,
+    address: contact.address !== "-" ? contact.address : undefined,
+    sameAs: contact.website !== "-" ? [contact.website] : undefined
+  };
+  restaurantJsonLd.textContent = JSON.stringify(payload);
 }
 
 function currentMessages() {
@@ -610,7 +706,19 @@ function applyRestaurantBranding() {
       drawerBrandLogo.classList.add("hidden");
     }
   }
-  document.title = `${brand.name} | Cardapio digital`;
+  const seoDescription =
+    (state.restaurant && state.restaurant.description) ||
+    "Cardapio digital integrado com pedido rapido e experiencia AR.";
+  const seoImage = (state.heroImages && state.heroImages[0]) || HERO_FALLBACK_IMAGE;
+  setSeoMeta({
+    title: `${brand.name} | Cardapio digital`,
+    description: seoDescription,
+    image: seoImage
+  });
+  setCanonicalUrl();
+  if (state.restaurant) {
+    updateStructuredData(state.restaurant, seoImage);
+  }
 }
 
 function getRestaurantContact() {
@@ -640,6 +748,7 @@ function applyLanguageTexts() {
     cartSubmit.textContent = isSending ? t("sending") : t("submit");
   }
   tableInput.placeholder = t("tablePlaceholder");
+  document.documentElement.lang = (state.language || "pt-BR").toLowerCase();
 }
 
 function inferCategory(item) {
@@ -663,27 +772,53 @@ function renderDrawer() {
   )}`;
 
   const contact = getRestaurantContact();
+  const safeWebsite = String(contact.website || "").trim();
+  const websiteHref =
+    safeWebsite && safeWebsite !== "-"
+      ? safeWebsite.startsWith("http")
+        ? safeWebsite
+        : `https://${safeWebsite}`
+      : "";
+  const phone = String(contact.phone || "").trim();
+  const email = String(contact.email || "").trim();
   drawerInfo.innerHTML = `
     <li><span>Endereco</span><span>${escapeHtml(contact.address || "-")}</span></li>
-    <li><span>Telefone</span><span>${escapeHtml(contact.phone || "-")}</span></li>
-    <li><span>Email</span><span>${escapeHtml(contact.email || "-")}</span></li>
-    <li><span>Site</span><span>${escapeHtml(contact.website || "-")}</span></li>
+    <li><span>Telefone</span><span>${
+      phone && phone !== "-" ? `<a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a>` : "-"
+    }</span></li>
+    <li><span>Email</span><span>${
+      email && email !== "-" ? `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : "-"
+    }</span></li>
+    <li><span>Site</span><span>${
+      websiteHref ? `<a href="${escapeHtml(websiteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(safeWebsite)}</a>` : "-"
+    }</span></li>
   `;
 }
 
 function openDrawer() {
+  lastFocusedElement = document.activeElement;
   sideOverlay.classList.remove("hidden");
+  sideOverlay.setAttribute("aria-hidden", "false");
   sideDrawer.classList.add("open");
   sideDrawer.setAttribute("aria-hidden", "false");
+  if (menuToggle) menuToggle.setAttribute("aria-expanded", "true");
   document.body.style.overflow = "hidden";
+  setTimeout(() => {
+    if (drawerLang) drawerLang.focus();
+  }, 10);
 }
 
 function closeDrawer() {
   sideOverlay.classList.add("hidden");
+  sideOverlay.setAttribute("aria-hidden", "true");
   sideDrawer.classList.remove("open");
   sideDrawer.setAttribute("aria-hidden", "true");
+  if (menuToggle) menuToggle.setAttribute("aria-expanded", "false");
   if (langModal.classList.contains("hidden")) {
     document.body.style.overflow = "";
+  }
+  if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+    lastFocusedElement.focus();
   }
 }
 
@@ -710,6 +845,7 @@ function renderLanguageList() {
       }
       state.language = lang.code;
       localStorage.setItem(languageKey, state.language);
+      trackPublicEvent("language_change", { meta: { code: state.language } });
       await applyTranslatedContent();
       if (
         state.selectedCategory !== "all" &&
@@ -731,21 +867,56 @@ function renderLanguageList() {
 }
 
 function openLanguageModal() {
+  lastFocusedElement = document.activeElement;
   renderLanguageList();
   langModal.classList.remove("hidden");
+  langModal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
+  setTimeout(() => {
+    const firstOption = langList.querySelector(".lang-option");
+    if (firstOption) firstOption.focus();
+  }, 10);
 }
 
 function closeLanguageModal() {
   langModal.classList.add("hidden");
+  langModal.setAttribute("aria-hidden", "true");
   if (sideOverlay.classList.contains("hidden")) {
     document.body.style.overflow = "";
+  }
+  if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+    lastFocusedElement.focus();
   }
 }
 
 function getTableValue() {
   const savedTable = (localStorage.getItem(tableKey) || "").trim();
   return tableFromUrl || savedTable || "";
+}
+
+function getSavedSearchTerm() {
+  return (localStorage.getItem(searchTermKey) || "").trim();
+}
+
+function saveSearchTerm(value) {
+  try {
+    const nextValue = (value || "").toString().trim().slice(0, 80);
+    if (!nextValue) {
+      localStorage.removeItem(searchTermKey);
+      return;
+    }
+    localStorage.setItem(searchTermKey, nextValue);
+  } catch {
+    // no-op
+  }
+}
+
+function saveSelectedCategory() {
+  try {
+    localStorage.setItem(categoryKey, state.selectedCategory || "all");
+  } catch {
+    // no-op
+  }
 }
 
 function loadCart() {
@@ -798,6 +969,7 @@ function addToCart(itemId) {
   }
   trackPublicEvent("add_to_cart", { itemId });
   saveCart();
+  announce("Item adicionado ao pedido.");
 }
 
 function updateCartQty(itemId, delta) {
@@ -809,6 +981,7 @@ function updateCartQty(itemId, delta) {
   }
   saveCart();
   renderCart();
+  announce("Pedido atualizado.");
 }
 
 function getFilteredItems() {
@@ -855,9 +1028,13 @@ function renderModeStrip() {
     }
     button.addEventListener("click", () => {
       state.selectedCategory = chip;
+      saveSelectedCategory();
       renderModeStrip();
       renderTabs();
       renderMenu();
+      if (chip !== "all") {
+        announce(`Categoria ${translateCategory(chip)} selecionada.`);
+      }
     });
     modeStrip.appendChild(button);
   });
@@ -874,9 +1051,13 @@ function renderTabs() {
     button.textContent = tab === "all" ? t("all") : translateCategory(tab);
     button.addEventListener("click", () => {
       state.selectedCategory = tab;
+      saveSelectedCategory();
       renderModeStrip();
       renderTabs();
       renderMenu();
+      if (tab !== "all") {
+        announce(`Categoria ${translateCategory(tab)} selecionada.`);
+      }
     });
     categoryList.appendChild(button);
   });
@@ -885,6 +1066,7 @@ function renderTabs() {
 function buildSection(title, items) {
   const wrapper = document.createElement("section");
   wrapper.className = "menu-section";
+  wrapper.setAttribute("aria-label", translateCategory(title));
 
   const heading = document.createElement("h2");
   heading.className = "section-title";
@@ -897,8 +1079,9 @@ function buildSection(title, items) {
   items.forEach((item) => {
     const row = document.createElement("article");
     row.className = "item-row";
+    row.setAttribute("aria-label", `${item.name} - R$ ${formatPrice(item.price)}`);
     const thumb = item.image
-      ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy" />`
+      ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />`
       : '<span class="thumb-placeholder">Imagem em breve</span>';
 
     const itemArParams = new URLSearchParams();
@@ -981,6 +1164,21 @@ function renderMenu() {
   if (selected.length > 0) {
     menuList.appendChild(buildSection(state.selectedCategory, selected));
   }
+}
+
+function renderLoadingSkeleton() {
+  menuList.innerHTML = "";
+  emptyState.classList.add("hidden");
+  const section = document.createElement("section");
+  section.className = "menu-section";
+  section.innerHTML = `
+    <h2 class="section-title">Carregando...</h2>
+    <div class="item-grid">
+      <article class="item-row skeleton-row"></article>
+      <article class="item-row skeleton-row"></article>
+    </div>
+  `;
+  menuList.appendChild(section);
 }
 
 function renderCart() {
@@ -1111,10 +1309,17 @@ async function sendOrder() {
   const tableValue = (tableInput.value || "").trim();
   if (!tableValue) {
     cartMessage.textContent = t("msgNeedTable");
+    announce(t("msgNeedTable"));
+    return;
+  }
+  if (!TABLE_PATTERN.test(tableValue)) {
+    cartMessage.textContent = "Mesa invalida. Use apenas letras, numeros, -, _, . e #.";
+    announce("Mesa invalida.");
     return;
   }
   if (state.cart.length === 0) {
     cartMessage.textContent = t("msgEmpty");
+    announce(t("msgEmpty"));
     return;
   }
 
@@ -1135,7 +1340,13 @@ async function sendOrder() {
     });
 
     if (!res.ok) {
+      if (res.status === 429) {
+        cartMessage.textContent = "Muitos pedidos em pouco tempo. Aguarde alguns segundos.";
+        announce("Limite temporario de pedidos.");
+        return;
+      }
       cartMessage.textContent = t("msgFail");
+      announce(t("msgFail"));
       return;
     }
 
@@ -1145,11 +1356,14 @@ async function sendOrder() {
     saveCart();
     renderCart();
     cartMessage.textContent = t("msgOk");
+    announce(t("msgOk"));
     setTimeout(() => {
       cartModal.classList.add("hidden");
+      document.body.style.overflow = "";
     }, 800);
   } catch (err) {
     cartMessage.textContent = t("msgConnection");
+    announce(t("msgConnection"));
   } finally {
     cartSubmit.dataset.sending = "0";
     cartSubmit.textContent = t("submit");
@@ -1158,6 +1372,14 @@ async function sendOrder() {
 }
 
 async function loadRestaurant() {
+  renderLoadingSkeleton();
+  setCanonicalUrl();
+  setSeoMeta({
+    title: "Cardapio digital",
+    description: "Carregando cardapio digital...",
+    image: HERO_FALLBACK_IMAGE
+  });
+
   if (!slug) {
     restaurantName.textContent = "Restaurante nao informado";
     restaurantDesc.textContent = "Abra por um link com parametro ?r=slug";
@@ -1165,70 +1387,112 @@ async function loadRestaurant() {
     return;
   }
 
-  const res = await fetch(`/api/public/restaurant/${encodeURIComponent(slug)}`);
-  if (!res.ok) {
-    restaurantName.textContent = "Restaurante nao encontrado";
-    restaurantDesc.textContent = "Confira o link do QR Code.";
+  try {
+    const res = await fetch(`/api/public/restaurant/${encodeURIComponent(slug)}`);
+    if (!res.ok) {
+      restaurantName.textContent = "Restaurante nao encontrado";
+      restaurantDesc.textContent = "Confira o link do QR Code.";
+      applyRestaurantBranding();
+      menuList.innerHTML = "";
+      return;
+    }
+
+    const data = await res.json();
+    state.restaurant = data.restaurant;
+    state.baseItems = Array.isArray(data.items) ? data.items.map((item) => ({ ...item })) : [];
+    state.items = state.baseItems.map((item) => ({ ...item }));
+    state.baseCategories = [...new Set(state.baseItems.map((item) => inferCategory(item)))];
+    state.categories = [...state.baseCategories];
+    state.baseDescription = (state.restaurant && state.restaurant.description) || "";
+    state.heroIndex = 0;
+    state.defaultLanguage = getDefaultLanguageCode();
+
+    const storedLanguage = localStorage.getItem(languageKey) || "";
+    const enabledLanguages = getEnabledLanguages();
+    const defaultLanguageCode = state.defaultLanguage;
+    if (enabledLanguages.some((lang) => lang.code === storedLanguage)) {
+      state.language = storedLanguage;
+    } else {
+      state.language = defaultLanguageCode;
+      localStorage.setItem(languageKey, state.language);
+    }
+
+    restaurantName.textContent = state.restaurant.name || "Cardapio";
     applyRestaurantBranding();
-    return;
-  }
-
-  const data = await res.json();
-  state.restaurant = data.restaurant;
-  state.baseItems = Array.isArray(data.items) ? data.items.map((item) => ({ ...item })) : [];
-  state.items = state.baseItems.map((item) => ({ ...item }));
-  state.baseCategories = [...new Set(state.baseItems.map((item) => inferCategory(item)))];
-  state.categories = [...state.baseCategories];
-  state.baseDescription = (state.restaurant && state.restaurant.description) || "";
-  state.heroIndex = 0;
-  state.defaultLanguage = getDefaultLanguageCode();
-
-  const storedLanguage = localStorage.getItem(languageKey) || "";
-  const enabledLanguages = getEnabledLanguages();
-  const defaultLanguageCode = state.defaultLanguage;
-  if (enabledLanguages.some((lang) => lang.code === storedLanguage)) {
-    state.language = storedLanguage;
-  } else {
-    state.language = defaultLanguageCode;
-    localStorage.setItem(languageKey, state.language);
-  }
-
-  restaurantName.textContent = state.restaurant.name || "Cardapio";
-  applyRestaurantBranding();
-  trackPublicEvent("menu_view", {
-    restaurantSlug: state.restaurant.slug || slug,
-    table: getTableValue()
-  });
-  if (tableFromUrl) {
-    trackPublicEvent("qr_scan", {
+    trackPublicEvent("menu_view", {
       restaurantSlug: state.restaurant.slug || slug,
-      table: tableFromUrl
+      table: getTableValue()
     });
+    if (tableFromUrl) {
+      trackPublicEvent("qr_scan", {
+        restaurantSlug: state.restaurant.slug || slug,
+        table: tableFromUrl
+      });
+    }
+
+    await applyTranslatedContent();
+    setTheme();
+    applyLanguageTexts();
+    renderDrawer();
+    renderHero();
+    startHeroAutoplay();
+    const heroImage = state.heroImages[0] || HERO_FALLBACK_IMAGE;
+    setSeoMeta({
+      title: `${state.restaurant.name || "Cardapio"} | Cardapio digital`,
+      description: (restaurantDesc.textContent || state.baseDescription || "").slice(0, 180),
+      image: heroImage
+    });
+    updateStructuredData(state.restaurant, heroImage);
+
+    if (searchInput) {
+      searchInput.value = getSavedSearchTerm();
+    }
+    if (
+      state.selectedCategory !== "all" &&
+      !state.categories.some((category) => category.toLowerCase() === state.selectedCategory.toLowerCase())
+    ) {
+      state.selectedCategory = "all";
+      saveSelectedCategory();
+    }
+
+    renderModeStrip();
+    renderTabs();
+    renderMenu();
+
+    loadCart();
+    updateCartButton();
+    renderCart();
+  } catch {
+    restaurantName.textContent = "Falha de conexao";
+    restaurantDesc.textContent = "Nao foi possivel carregar o cardapio agora.";
+    menuList.innerHTML = "";
+    applyRestaurantBranding();
   }
-
-  await applyTranslatedContent();
-  setTheme();
-  applyLanguageTexts();
-  renderDrawer();
-  renderHero();
-  startHeroAutoplay();
-  renderModeStrip();
-  renderTabs();
-  renderMenu();
-
-  loadCart();
-  updateCartButton();
-  renderCart();
 }
 
 searchToggle.addEventListener("click", () => {
   searchWrap.classList.toggle("hidden");
+  if (searchToggle) {
+    searchToggle.setAttribute("aria-expanded", searchWrap.classList.contains("hidden") ? "false" : "true");
+  }
   if (!searchWrap.classList.contains("hidden")) {
     searchInput.focus();
+    return;
   }
+  searchInput.value = "";
+  saveSearchTerm("");
+  renderMenu();
 });
 
-searchInput.addEventListener("input", () => renderMenu());
+const onSearchInput = debounce(() => {
+  const term = (searchInput.value || "").trim();
+  saveSearchTerm(term);
+  if (term.length >= 2) {
+    trackPublicEvent("search_use", { meta: { termLength: term.length } });
+  }
+  renderMenu();
+}, 150);
+searchInput.addEventListener("input", onSearchInput);
 
 menuToggle.addEventListener("click", () => {
   renderDrawer();
@@ -1259,12 +1523,15 @@ shareToggle.addEventListener("click", async () => {
         title: state.restaurant ? state.restaurant.name : "Cardapio",
         url: shareUrl
       });
+      trackPublicEvent("share_link", { meta: { mode: "native" } });
+      announce("Link de compartilhamento aberto.");
       return;
     }
     await navigator.clipboard.writeText(shareUrl);
-    alert("Link copiado.");
-  } catch (err) {
-    // no-op
+    trackPublicEvent("share_link", { meta: { mode: "clipboard" } });
+    announce("Link copiado para a area de transferencia.");
+  } catch {
+    announce("Nao foi possivel compartilhar agora.");
   }
 });
 
@@ -1277,17 +1544,30 @@ heroNext.addEventListener("click", () => {
 });
 
 cartButton.addEventListener("click", () => {
+  lastFocusedElement = document.activeElement;
   renderCart();
   cartModal.classList.remove("hidden");
+  cartModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  setTimeout(() => {
+    if (cartClose) cartClose.focus();
+  }, 10);
 });
 
 cartClose.addEventListener("click", () => {
   cartModal.classList.add("hidden");
+  cartModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+    lastFocusedElement.focus();
+  }
 });
 
 cartModal.addEventListener("click", (event) => {
   if (event.target === cartModal) {
     cartModal.classList.add("hidden");
+    cartModal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
   }
 });
 
@@ -1297,18 +1577,77 @@ tableInput.addEventListener("change", () => {
     localStorage.removeItem(tableKey);
     return;
   }
+  if (!TABLE_PATTERN.test(value)) {
+    tableInput.value = "";
+    localStorage.removeItem(tableKey);
+    cartMessage.textContent = "Mesa invalida.";
+    announce("Mesa invalida.");
+    return;
+  }
   localStorage.setItem(tableKey, value);
 });
 
 if (cartClear) {
   cartClear.addEventListener("click", () => {
+    if (!state.cart.length) return;
+    const accepted = window.confirm("Deseja limpar todo o pedido?");
+    if (!accepted) return;
     state.cart = [];
     saveCart();
     renderCart();
     cartMessage.textContent = t("msgCleared");
+    announce(t("msgCleared"));
   });
 }
 
+if (backTopButton) {
+  backTopButton.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
+window.addEventListener("scroll", () => {
+  if (!backTopButton) return;
+  backTopButton.classList.toggle("hidden", window.scrollY < 420);
+});
+if (backTopButton) {
+  backTopButton.classList.toggle("hidden", window.scrollY < 420);
+}
+
+document.addEventListener("keydown", (event) => {
+  const tagName = (document.activeElement && document.activeElement.tagName) || "";
+  const isTypingField = ["INPUT", "TEXTAREA", "SELECT"].includes(tagName);
+  if (event.key === "/" && !isTypingField && document.activeElement !== searchInput) {
+    event.preventDefault();
+    if (searchWrap.classList.contains("hidden")) {
+      searchWrap.classList.remove("hidden");
+      if (searchToggle) searchToggle.setAttribute("aria-expanded", "true");
+    }
+    searchInput.focus();
+    return;
+  }
+  if (event.key !== "Escape") return;
+  if (!cartModal.classList.contains("hidden")) {
+    cartModal.classList.add("hidden");
+    cartModal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    return;
+  }
+  if (!langModal.classList.contains("hidden")) {
+    closeLanguageModal();
+    return;
+  }
+  if (!sideOverlay.classList.contains("hidden")) {
+    closeDrawer();
+    return;
+  }
+  if (!searchWrap.classList.contains("hidden")) {
+    searchWrap.classList.add("hidden");
+    if (searchToggle) searchToggle.setAttribute("aria-expanded", "false");
+  }
+});
+
 cartSubmit.addEventListener("click", sendOrder);
 
+registerServiceWorker();
 loadRestaurant();

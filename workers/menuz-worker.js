@@ -20,6 +20,10 @@ const PUBLIC_EVENT_TYPES = new Set([
   "ar_open",
   "add_to_cart",
   "order_submit",
+  "order_success",
+  "language_change",
+  "search_use",
+  "share_link",
   "qr_scan"
 ]);
 const JSON_HEADERS = {
@@ -90,6 +94,14 @@ async function handleRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
+  if (pathname === "/robots.txt") {
+    return buildRobotsTxtResponse(url);
+  }
+
+  if (pathname === "/sitemap.xml") {
+    return buildSitemapXmlResponse(env, url);
+  }
+
   if (pathname.startsWith("/uploads/")) {
     return handleUploads(request, env, pathname);
   }
@@ -110,10 +122,12 @@ async function handleRequest(request, env) {
   }
 
   if (pathname === "/admin") {
-    return env.ASSETS.fetch(new Request(new URL("/admin.html", request.url), request));
+    const response = await env.ASSETS.fetch(new Request(new URL("/admin.html", request.url), request));
+    return withAssetCacheHeaders("/admin.html", response, { noIndex: true, noStore: true });
   }
 
-  return env.ASSETS.fetch(request);
+  const response = await env.ASSETS.fetch(request);
+  return withAssetCacheHeaders(pathname, response);
 }
 
 async function ensureRuntimeSchema(env) {
@@ -196,11 +210,11 @@ function withSecurityHeaders(request, response) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' https://cdn.jsdelivr.net",
+      "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
       "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' https: data: blob:",
-      "connect-src 'self' https://api.meshy.ai",
+      "connect-src 'self' https://api.meshy.ai https://translation.googleapis.com",
       "media-src 'self' data: blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -213,6 +227,98 @@ function withSecurityHeaders(request, response) {
     headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
   return new Response(response.body, { status: response.status, headers });
+}
+
+function withAssetCacheHeaders(pathname, response, options = {}) {
+  if (response.status >= 400) return response;
+  const headers = new Headers(response.headers);
+  const { noIndex = false, noStore = false } = options;
+  if (noIndex) {
+    headers.set("x-robots-tag", "noindex, nofollow");
+  }
+
+  if (noStore) {
+    headers.set("cache-control", "no-store");
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  const safePath = (pathname || "").toLowerCase();
+  if (safePath === "/sw.js") {
+    headers.set("cache-control", "no-cache");
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  if (
+    /\.(css|js|svg|png|jpg|jpeg|webp|ico|woff2|woff|webmanifest)$/i.test(safePath)
+  ) {
+    headers.set("cache-control", "public, max-age=31536000, immutable");
+    return new Response(response.body, { status: response.status, headers });
+  }
+
+  if (safePath === "/" || safePath.endsWith(".html") || safePath.startsWith("/templates/")) {
+    headers.set("cache-control", "public, max-age=300");
+  }
+  return new Response(response.body, { status: response.status, headers });
+}
+
+function xmlEscape(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function buildRobotsTxtResponse(url) {
+  const base = `${url.protocol}//${url.host}`;
+  const body = [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /api/",
+    "Disallow: /admin",
+    `Sitemap: ${base}/sitemap.xml`
+  ].join("\n");
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "public, max-age=3600"
+    }
+  });
+}
+
+async function buildSitemapXmlResponse(env, url) {
+  const base = `${url.protocol}//${url.host}`;
+  const nowIso = new Date().toISOString();
+  const { results } = await env.DB.prepare("SELECT slug FROM restaurants ORDER BY name COLLATE NOCASE").all();
+
+  const urls = [
+    { loc: `${base}/`, lastmod: nowIso }
+  ];
+  (results || []).forEach((row) => {
+    const safeSlug = normalizeSlug(row.slug || "");
+    if (!safeSlug) return;
+    urls.push({
+      loc: `${base}/r/${encodeURIComponent(safeSlug)}`,
+      lastmod: nowIso
+    });
+  });
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
+    .map(
+      (entry) =>
+        `  <url><loc>${xmlEscape(entry.loc)}</loc><lastmod>${xmlEscape(String(entry.lastmod).slice(0, 10))}</lastmod></url>`
+    )
+    .join("\n")}\n</urlset>`;
+
+  return new Response(xml, {
+    status: 200,
+    headers: {
+      "content-type": "application/xml; charset=utf-8",
+      "cache-control": "public, max-age=900"
+    }
+  });
 }
 
 function json(data, status = 200, extraHeaders = {}) {

@@ -4,11 +4,38 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cardapio digital</title>
+    <meta
+      id="meta-description"
+      name="description"
+      content="Cardapio digital integrado com pedido na mesa, experiencia AR e navegacao otimizada para mobile."
+    />
+    <meta name="theme-color" content="#c95f2f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" id="og-title" content="Cardapio digital" />
+    <meta property="og:description" id="og-description" content="Cardapio digital com pedido rapido e experiencia AR." />
+    <meta property="og:image" id="og-image" content="/assets/landing/hero-restaurant.webp" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" id="twitter-title" content="Cardapio digital" />
+    <meta name="twitter:description" id="twitter-description" content="Cardapio digital com pedido rapido e experiencia AR." />
+    <meta name="twitter:image" id="twitter-image" content="/assets/landing/hero-restaurant.webp" />
+    <link rel="canonical" id="canonical-link" href="/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="//fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="//fonts.gstatic.com" />
     <link rel="stylesheet" href="/topo.css" />
+    <script type="application/ld+json" id="restaurant-jsonld">{}</script>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Pular para o conteudo</a>
+    <noscript>
+      <p class="noscript-warning">Ative o JavaScript para usar o cardapio e enviar pedidos.</p>
+    </noscript>
     <header class="topbar">
-      <button class="icon-btn" id="menu-toggle" type="button" aria-label="Abrir menu">
+      <button class="icon-btn" id="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="side-drawer" aria-expanded="false">
         <span></span>
         <span></span>
         <span></span>
@@ -18,13 +45,14 @@
         <p class="logo-title" id="brand-title">Cardapio</p>
         <p class="logo-sub" id="brand-sub">menu</p>
       </div>
-      <button class="search-btn" id="search-toggle" type="button" aria-label="Buscar">
+      <button class="search-btn" id="search-toggle" type="button" aria-label="Buscar" aria-controls="search-wrap" aria-expanded="false">
         &#9906;
       </button>
     </header>
 
     <section class="search-wrap hidden" id="search-wrap">
-      <input id="search-input" type="search" placeholder="Buscar prato" />
+      <label class="sr-only" for="search-input">Buscar prato</label>
+      <input id="search-input" type="search" placeholder="Buscar prato" autocomplete="off" />
     </section>
 
     <section class="hero">
@@ -42,13 +70,13 @@
       <div class="title-row">
         <h1 id="restaurant-name">Carregando...</h1>
         <div class="title-tools">
-          <button class="icon-text" id="share-toggle" type="button">&#8901;</button>
+          <button class="icon-text" id="share-toggle" type="button" aria-label="Compartilhar link">&#8901;</button>
         </div>
       </div>
       <p id="restaurant-desc"></p>
     </section>
 
-    <main class="page">
+    <main class="page" id="main-content">
       <section class="mode-strip" id="mode-strip"></section>
 
       <section class="tabs" id="category-list"></section>
@@ -61,7 +89,7 @@
 
     <button class="cart-fab hidden" id="cart-button">Pedido</button>
 
-    <div class="cart-modal hidden" id="cart-modal">
+    <div class="cart-modal hidden" id="cart-modal" aria-hidden="true">
       <div class="cart-panel">
         <div class="cart-head">
           <div>
@@ -75,17 +103,17 @@
 
         <div class="cart-foot">
           <div class="cart-total" id="cart-total"></div>
-          <input id="table-input" type="text" placeholder="Mesa" />
+          <input id="table-input" type="text" inputmode="numeric" pattern="[a-zA-Z0-9\\-_.#]{1,32}" placeholder="Mesa" autocomplete="off" />
           <div class="row">
             <button class="btn btn-outline" id="cart-clear" type="button">Limpar</button>
             <button id="cart-submit">Enviar pedido</button>
           </div>
-          <p id="cart-message"></p>
+          <p id="cart-message" role="status" aria-live="polite"></p>
         </div>
       </div>
     </div>
 
-    <div class="lang-modal hidden" id="lang-modal">
+    <div class="lang-modal hidden" id="lang-modal" aria-hidden="true">
       <div class="lang-card">
         <div class="lang-head">
           <h3 id="lang-title">Idioma</h3>
@@ -95,7 +123,7 @@
       </div>
     </div>
 
-    <div class="side-overlay hidden" id="side-overlay"></div>
+    <div class="side-overlay hidden" id="side-overlay" aria-hidden="true"></div>
     <aside class="side-drawer" id="side-drawer" aria-hidden="true">
       <div class="drawer-head">
         <button class="drawer-lang" id="drawer-lang" type="button" aria-label="Trocar idioma">
@@ -111,6 +139,10 @@
       <ul class="drawer-info" id="drawer-info"></ul>
     </aside>
 
-    <script src="/topo.js"></script>
+    <button class="back-top hidden" id="back-top" type="button" aria-label="Voltar ao topo">
+      Topo
+    </button>
+    <div class="sr-live" id="sr-live" aria-live="polite" aria-atomic="true"></div>
+    <script src="/topo.js" defer></script>
   </body>
 </html>

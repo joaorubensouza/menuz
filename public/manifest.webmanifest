@@ -1,0 +1,19 @@
+{
+  "name": "Menuz Cardapio Digital",
+  "short_name": "Menuz",
+  "description": "Cardapio digital com pedido rapido e experiencia AR.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f4ed",
+  "theme_color": "#c95f2f",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
