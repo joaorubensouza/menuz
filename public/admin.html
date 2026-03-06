@@ -108,6 +108,11 @@
                 id="restaurant-category-labels"
                 placeholder='Categorias customizadas JSON. Ex: {"pratos-principais":{"en-US":"Main Courses"}}'
               ></textarea>
+              <textarea
+                class="input"
+                id="restaurant-integrations"
+                placeholder='Integracoes JSON. Ex: {"quickLinks":{"whatsapp":"https://wa.me/..."}}'
+              ></textarea>
               <button class="btn" type="submit">Criar restaurante</button>
             </form>
           </div>
@@ -168,6 +173,11 @@
                 id="edit-category-labels"
                 placeholder='Categorias customizadas JSON'
               ></textarea>
+              <textarea
+                class="input"
+                id="edit-integrations"
+                placeholder='Integracoes JSON'
+              ></textarea>
               <button class="btn" type="submit">Salvar restaurante</button>
             </form>
           </div>
@@ -216,6 +226,35 @@
           </div>
 
           <div class="table" id="items-list"></div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            <h2>Leads e Reservas</h2>
+            <button class="btn btn-outline" id="engagement-refresh" type="button">Atualizar</button>
+          </div>
+
+          <div class="form-row">
+            <div class="panel">
+              <div class="tag">Leads</div>
+              <div class="table" id="leads-list"></div>
+            </div>
+            <div class="panel">
+              <div class="tag">Reservas</div>
+              <div class="table" id="reservations-list"></div>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top: 12px;">
+            <div class="panel">
+              <div class="tag">Fila de espera</div>
+              <div class="table" id="waitlist-list"></div>
+            </div>
+            <div class="panel">
+              <div class="tag">Feedback</div>
+              <div class="table" id="feedback-list"></div>
+            </div>
+          </div>
 
           <div class="divider"></div>
 

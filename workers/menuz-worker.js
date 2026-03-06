@@ -24,7 +24,16 @@ const PUBLIC_EVENT_TYPES = new Set([
   "language_change",
   "search_use",
   "share_link",
-  "qr_scan"
+  "qr_scan",
+  "lead_submit",
+  "reservation_submit",
+  "waitlist_join",
+  "feedback_submit",
+  "pwa_install",
+  "map_open",
+  "social_open",
+  "delivery_open",
+  "checkout_start"
 ]);
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -60,6 +69,8 @@ const UI_MESSAGE_KEYS = [
   "msgCleared",
   "language"
 ];
+const INTEGRATION_MAX_STRING = 280;
+const WEBHOOK_TIMEOUT_MS = 2800;
 const encoder = new TextEncoder();
 let schemaInitPromise = null;
 
@@ -158,10 +169,86 @@ async function ensureRuntimeSchema(env) {
     ).run();
 
     await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS leads (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        source TEXT DEFAULT '',
+        message TEXT DEFAULT '',
+        meta_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS reservations (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        guests INTEGER NOT NULL DEFAULT 2,
+        date_label TEXT DEFAULT '',
+        time_label TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        status TEXT DEFAULT 'novo',
+        source TEXT DEFAULT '',
+        meta_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS waitlist_entries (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        guests INTEGER NOT NULL DEFAULT 2,
+        eta_minutes INTEGER NOT NULL DEFAULT 0,
+        source TEXT DEFAULT '',
+        meta_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS feedback_entries (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        rating INTEGER NOT NULL DEFAULT 0,
+        comment TEXT DEFAULT '',
+        source TEXT DEFAULT '',
+        meta_json TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+      )`
+    ).run();
+
+    await env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS idx_events_restaurant_created ON events(restaurant_id, created_at)"
     ).run();
     await env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at)"
+    ).run();
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_leads_restaurant_created ON leads(restaurant_id, created_at)"
+    ).run();
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_reservations_restaurant_created ON reservations(restaurant_id, created_at)"
+    ).run();
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_waitlist_restaurant_created ON waitlist_entries(restaurant_id, created_at)"
+    ).run();
+    await env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_feedback_restaurant_created ON feedback_entries(restaurant_id, created_at)"
     ).run();
 
     const alterStatements = [
@@ -176,7 +263,8 @@ async function ensureRuntimeSchema(env) {
       "ALTER TABLE restaurants ADD COLUMN languages_json TEXT DEFAULT '[]'",
       "ALTER TABLE restaurants ADD COLUMN default_language TEXT DEFAULT 'pt-BR'",
       "ALTER TABLE restaurants ADD COLUMN ui_messages_json TEXT DEFAULT '{}'",
-      "ALTER TABLE restaurants ADD COLUMN category_labels_json TEXT DEFAULT '{}'"
+      "ALTER TABLE restaurants ADD COLUMN category_labels_json TEXT DEFAULT '{}'",
+      "ALTER TABLE restaurants ADD COLUMN integrations_json TEXT DEFAULT '{}'"
     ];
 
     for (const statement of alterStatements) {
@@ -210,11 +298,11 @@ function withSecurityHeaders(request, response) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
+      "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://analytics.tiktok.com https://www.clarity.ms https://script.hotjar.com https://static.hotjar.com",
       "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' https: data: blob:",
-      "connect-src 'self' https://api.meshy.ai https://translation.googleapis.com",
+      "connect-src 'self' https://api.meshy.ai https://translation.googleapis.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net https://www.clarity.ms https://analytics.tiktok.com https://www.facebook.com https://graph.facebook.com https://script.hotjar.com https://static.hotjar.com https://ws.hotjar.com wss://ws.hotjar.com",
       "media-src 'self' data: blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -505,7 +593,8 @@ function mapRestaurantRow(row) {
       languages
     },
     uiMessages: sanitizeUiMessages(parseJsonSafe(row.ui_messages_json, {})),
-    categoryLabels: sanitizeCategoryLabels(parseJsonSafe(row.category_labels_json, {}))
+    categoryLabels: sanitizeCategoryLabels(parseJsonSafe(row.category_labels_json, {})),
+    integrations: sanitizeIntegrations(parseJsonSafe(row.integrations_json, {}))
   };
 }
 
@@ -546,6 +635,38 @@ function mapOrderRow(row) {
     items: parseJsonSafe(row.items_json, []),
     total: Number(row.total) || 0,
     status: row.status || "novo",
+    createdAt: row.created_at
+  };
+}
+
+function mapLeadRow(row) {
+  return {
+    id: row.id,
+    restaurantId: row.restaurant_id,
+    name: row.name || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    source: row.source || "",
+    message: row.message || "",
+    meta: parseJsonSafe(row.meta_json, {}),
+    createdAt: row.created_at
+  };
+}
+
+function mapReservationRow(row) {
+  return {
+    id: row.id,
+    restaurantId: row.restaurant_id,
+    name: row.name || "",
+    phone: row.phone || "",
+    email: row.email || "",
+    guests: toInt(row.guests, 2),
+    date: row.date_label || "",
+    time: row.time_label || "",
+    notes: row.notes || "",
+    status: row.status || "novo",
+    source: row.source || "",
+    meta: parseJsonSafe(row.meta_json, {}),
     createdAt: row.created_at
   };
 }
@@ -834,6 +955,130 @@ function sanitizeCategoryLabels(value) {
   return output;
 }
 
+function sanitizeEnumValue(value, allowed, fallback) {
+  const normalized = sanitizeText(value, 48).toLowerCase();
+  if (allowed.includes(normalized)) return normalized;
+  return fallback;
+}
+
+function sanitizePublicUrl(value, max = INTEGRATION_MAX_STRING) {
+  const text = sanitizeText(value, max);
+  if (!text) return "";
+  if (text.startsWith("/")) return text;
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(text)) return text;
+  return "";
+}
+
+function sanitizeWebhookUrl(value) {
+  const text = sanitizeText(value, INTEGRATION_MAX_STRING);
+  if (!text) return "";
+  if (/^https:\/\//i.test(text)) return text;
+  return "";
+}
+
+function sanitizeShortToken(value, max = 80) {
+  return sanitizeText(value, max).replace(/[^\w\-.:/]/g, "");
+}
+
+function sanitizeIntegrations(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const quickLinksRaw = source.quickLinks && typeof source.quickLinks === "object" ? source.quickLinks : {};
+  const analyticsRaw = source.analytics && typeof source.analytics === "object" ? source.analytics : {};
+  const paymentsRaw = source.payments && typeof source.payments === "object" ? source.payments : {};
+  const webhooksRaw = source.webhooks && typeof source.webhooks === "object" ? source.webhooks : {};
+  const featuresRaw = source.features && typeof source.features === "object" ? source.features : {};
+  const visualRaw = source.visual && typeof source.visual === "object" ? source.visual : {};
+
+  return {
+    quickLinks: {
+      whatsapp: sanitizePublicUrl(quickLinksRaw.whatsapp),
+      telegram: sanitizePublicUrl(quickLinksRaw.telegram),
+      instagram: sanitizePublicUrl(quickLinksRaw.instagram),
+      facebook: sanitizePublicUrl(quickLinksRaw.facebook),
+      tiktok: sanitizePublicUrl(quickLinksRaw.tiktok),
+      maps: sanitizePublicUrl(quickLinksRaw.maps),
+      website: sanitizePublicUrl(quickLinksRaw.website),
+      reservation: sanitizePublicUrl(quickLinksRaw.reservation),
+      delivery: sanitizePublicUrl(quickLinksRaw.delivery),
+      pickup: sanitizePublicUrl(quickLinksRaw.pickup),
+      review: sanitizePublicUrl(quickLinksRaw.review),
+      loyalty: sanitizePublicUrl(quickLinksRaw.loyalty)
+    },
+    analytics: {
+      gtmId: sanitizeShortToken(analyticsRaw.gtmId, 32).toUpperCase(),
+      ga4Id: sanitizeShortToken(analyticsRaw.ga4Id, 32).toUpperCase(),
+      metaPixelId: sanitizeShortToken(analyticsRaw.metaPixelId, 40),
+      tiktokPixelId: sanitizeShortToken(analyticsRaw.tiktokPixelId, 40),
+      clarityId: sanitizeShortToken(analyticsRaw.clarityId, 40),
+      hotjarId: sanitizeShortToken(analyticsRaw.hotjarId, 40)
+    },
+    payments: {
+      stripeCheckoutUrl: sanitizePublicUrl(paymentsRaw.stripeCheckoutUrl),
+      paypalMeUrl: sanitizePublicUrl(paymentsRaw.paypalMeUrl),
+      mbwayPhone: sanitizeText(paymentsRaw.mbwayPhone, 40),
+      pixKey: sanitizeText(paymentsRaw.pixKey, 120)
+    },
+    webhooks: {
+      events: sanitizeWebhookUrl(webhooksRaw.events),
+      orders: sanitizeWebhookUrl(webhooksRaw.orders),
+      leads: sanitizeWebhookUrl(webhooksRaw.leads),
+      reservations: sanitizeWebhookUrl(webhooksRaw.reservations),
+      waitlist: sanitizeWebhookUrl(webhooksRaw.waitlist),
+      feedback: sanitizeWebhookUrl(webhooksRaw.feedback)
+    },
+    features: {
+      showLeadForm: Boolean(featuresRaw.showLeadForm),
+      showReservationForm: Boolean(featuresRaw.showReservationForm),
+      showWaitlistForm: Boolean(featuresRaw.showWaitlistForm),
+      showFeedbackForm: Boolean(featuresRaw.showFeedbackForm),
+      enableInstallPrompt: featuresRaw.enableInstallPrompt !== false,
+      enableFavorites: featuresRaw.enableFavorites !== false,
+      enableCompactMode: featuresRaw.enableCompactMode !== false,
+      enableQuickActions: featuresRaw.enableQuickActions !== false
+    },
+    visual: {
+      preset: sanitizeEnumValue(
+        visualRaw.preset,
+        ["clean", "editorial", "bold", "night", "beach", "bistro"],
+        "clean"
+      ),
+      density: sanitizeEnumValue(visualRaw.density, ["compact", "comfortable", "spacious"], "comfortable"),
+      cardStyle: sanitizeEnumValue(visualRaw.cardStyle, ["soft", "glass", "flat"], "soft")
+    }
+  };
+}
+
+function getRestaurantWebhookUrl(restaurant, channel) {
+  if (!restaurant || !restaurant.integrations || !restaurant.integrations.webhooks) return "";
+  const url = restaurant.integrations.webhooks[channel];
+  return sanitizeWebhookUrl(url);
+}
+
+async function sendWebhook(url, payload) {
+  if (!url) return { ok: false, skipped: true };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    return { ok: response.ok, status: response.status };
+  } catch {
+    return { ok: false, status: 0 };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fireRestaurantWebhook(env, restaurant, channel, payload) {
+  const url = getRestaurantWebhookUrl(restaurant, channel);
+  if (!url) return;
+  await sendWebhook(url, payload);
+}
+
 function sanitizeNullableUrl(value, max = 600) {
   const text = sanitizeText(value, max);
   if (!text) return "";
@@ -854,6 +1099,61 @@ function sanitizeTableLabel(value) {
   const table = sanitizeText(value, 32);
   if (!TABLE_PATTERN.test(table)) return "";
   return table;
+}
+
+function sanitizePublicSource(value) {
+  return sanitizeText(value || "site", 40).toLowerCase() || "site";
+}
+
+function sanitizeLeadPayload(body) {
+  const payload = body && typeof body === "object" ? body : {};
+  return {
+    name: sanitizeText(payload.name, 120),
+    email: sanitizeContactEmail(payload.email),
+    phone: sanitizeText(payload.phone, 40),
+    source: sanitizePublicSource(payload.source),
+    message: sanitizeText(payload.message, 800),
+    meta: payload.meta && typeof payload.meta === "object" ? payload.meta : {}
+  };
+}
+
+function sanitizeReservationPayload(body) {
+  const payload = body && typeof body === "object" ? body : {};
+  return {
+    name: sanitizeText(payload.name, 120),
+    phone: sanitizeText(payload.phone, 40),
+    email: sanitizeContactEmail(payload.email),
+    guests: Math.max(1, Math.min(20, toInt(payload.guests, 2))),
+    dateLabel: sanitizeText(payload.date || payload.dateLabel, 40),
+    timeLabel: sanitizeText(payload.time || payload.timeLabel, 24),
+    notes: sanitizeText(payload.notes, 800),
+    source: sanitizePublicSource(payload.source),
+    meta: payload.meta && typeof payload.meta === "object" ? payload.meta : {}
+  };
+}
+
+function sanitizeWaitlistPayload(body) {
+  const payload = body && typeof body === "object" ? body : {};
+  return {
+    name: sanitizeText(payload.name, 120),
+    phone: sanitizeText(payload.phone, 40),
+    guests: Math.max(1, Math.min(20, toInt(payload.guests, 2))),
+    etaMinutes: Math.max(0, Math.min(300, toInt(payload.etaMinutes, 0))),
+    source: sanitizePublicSource(payload.source),
+    meta: payload.meta && typeof payload.meta === "object" ? payload.meta : {}
+  };
+}
+
+function sanitizeFeedbackPayload(body) {
+  const payload = body && typeof body === "object" ? body : {};
+  return {
+    name: sanitizeText(payload.name, 120),
+    email: sanitizeContactEmail(payload.email),
+    rating: Math.max(1, Math.min(5, toInt(payload.rating, 5))),
+    comment: sanitizeText(payload.comment, 1200),
+    source: sanitizePublicSource(payload.source),
+    meta: payload.meta && typeof payload.meta === "object" ? payload.meta : {}
+  };
 }
 
 function sanitizeEventType(value) {
@@ -1097,10 +1397,15 @@ async function recordPublicEvent(env, request, payload) {
   if (!eventType) return { ok: false, error: "event_invalid" };
   const restaurantId = sanitizeText(payload.restaurantId, 80);
   if (!restaurantId) return { ok: false, error: "restaurant_required" };
+  const restaurant =
+    payload.restaurant && payload.restaurant.id === restaurantId
+      ? payload.restaurant
+      : await getRestaurantById(env, restaurantId);
   const itemId = sanitizeText(payload.itemId, 80);
   const tableLabel = sanitizeTableLabel(payload.table || "");
   const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
   const safeMeta = JSON.stringify(meta).slice(0, 2000);
+  const nowIso = new Date().toISOString();
   const ipHash = await hashEventIp(getClientIp(request), env);
   const userAgent = sanitizeText(request.headers.get("user-agent") || "", 220);
 
@@ -1118,9 +1423,21 @@ async function recordPublicEvent(env, request, payload) {
       ipHash,
       userAgent,
       safeMeta,
-      new Date().toISOString()
+      nowIso
     )
     .run();
+
+  if (restaurant) {
+    await fireRestaurantWebhook(env, restaurant, "events", {
+      type: "public_event",
+      restaurantId,
+      eventType,
+      itemId: itemId || "",
+      table: tableLabel || "",
+      meta,
+      createdAt: nowIso
+    });
+  }
 
   return { ok: true };
 }
@@ -1967,9 +2284,13 @@ async function handleApi(request, env, url) {
     const body = await parseJsonBody(request);
     const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
     let restaurantId = sanitizeText(body.restaurantId, 80);
+    let resolvedRestaurant = null;
     if (!restaurantId && restaurantSlug) {
       const restaurant = await getRestaurantBySlug(env, restaurantSlug);
-      if (restaurant) restaurantId = restaurant.id;
+      if (restaurant) {
+        restaurantId = restaurant.id;
+        resolvedRestaurant = restaurant;
+      }
     }
     if (!restaurantId) return json({ error: "restaurant_required" }, 400);
 
@@ -1986,6 +2307,7 @@ async function handleApi(request, env, url) {
 
     const result = await recordPublicEvent(env, request, {
       restaurantId,
+      restaurant: resolvedRestaurant,
       itemId,
       eventType,
       table: body.table || body.tableLabel || "",
@@ -2062,6 +2384,7 @@ async function handleApi(request, env, url) {
 
     await recordPublicEvent(env, request, {
       restaurantId: restaurant.id,
+      restaurant,
       eventType: "order_submit",
       table,
       meta: {
@@ -2070,7 +2393,263 @@ async function handleApi(request, env, url) {
         total: order.total
       }
     });
+    await fireRestaurantWebhook(env, restaurant, "orders", {
+      type: "order_created",
+      order,
+      restaurantId: restaurant.id
+    });
     return json({ order });
+  }
+
+  if (method === "POST" && pathname === "/api/public/leads") {
+    const ip = getClientIp(request);
+    const rate = await consumeRateLimit(
+      env,
+      `leads:${ip}`,
+      config.eventMaxPerWindow,
+      config.eventWindowMs
+    );
+    if (!rate.allowed) {
+      return json(
+        { error: "too_many_requests", retryAfterSeconds: rate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(rate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    if (!restaurantSlug) return json({ error: "restaurant_required" }, 400);
+    const restaurant = await getRestaurantBySlug(env, restaurantSlug);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+
+    const lead = sanitizeLeadPayload(body);
+    if (!lead.email && !lead.phone) {
+      return json({ error: "contact_required" }, 400);
+    }
+
+    const leadId = `lead-${crypto.randomUUID()}`;
+    const nowIso = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO leads
+       (id, restaurant_id, name, email, phone, source, message, meta_json, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+    )
+      .bind(
+        leadId,
+        restaurant.id,
+        lead.name,
+        lead.email,
+        lead.phone,
+        lead.source,
+        lead.message,
+        JSON.stringify(lead.meta || {}),
+        nowIso
+      )
+      .run();
+
+    await recordPublicEvent(env, request, {
+      restaurantId: restaurant.id,
+      restaurant,
+      eventType: "lead_submit",
+      table: "",
+      meta: { leadId, source: lead.source }
+    });
+    await fireRestaurantWebhook(env, restaurant, "leads", {
+      type: "lead_created",
+      lead: { id: leadId, ...lead, createdAt: nowIso },
+      restaurantId: restaurant.id
+    });
+    return json({ ok: true, leadId });
+  }
+
+  if (method === "POST" && pathname === "/api/public/reservations") {
+    const ip = getClientIp(request);
+    const rate = await consumeRateLimit(
+      env,
+      `reservations:${ip}`,
+      config.eventMaxPerWindow,
+      config.eventWindowMs
+    );
+    if (!rate.allowed) {
+      return json(
+        { error: "too_many_requests", retryAfterSeconds: rate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(rate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    if (!restaurantSlug) return json({ error: "restaurant_required" }, 400);
+    const restaurant = await getRestaurantBySlug(env, restaurantSlug);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+
+    const reservation = sanitizeReservationPayload(body);
+    if (!reservation.name || !reservation.phone) {
+      return json({ error: "name_phone_required" }, 400);
+    }
+
+    const reservationId = `res-${crypto.randomUUID()}`;
+    const nowIso = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO reservations
+       (id, restaurant_id, name, phone, email, guests, date_label, time_label, notes, status, source, meta_json, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'novo', ?10, ?11, ?12)`
+    )
+      .bind(
+        reservationId,
+        restaurant.id,
+        reservation.name,
+        reservation.phone,
+        reservation.email,
+        reservation.guests,
+        reservation.dateLabel,
+        reservation.timeLabel,
+        reservation.notes,
+        reservation.source,
+        JSON.stringify(reservation.meta || {}),
+        nowIso
+      )
+      .run();
+
+    await recordPublicEvent(env, request, {
+      restaurantId: restaurant.id,
+      restaurant,
+      eventType: "reservation_submit",
+      table: "",
+      meta: { reservationId, guests: reservation.guests, source: reservation.source }
+    });
+    await fireRestaurantWebhook(env, restaurant, "reservations", {
+      type: "reservation_created",
+      reservation: { id: reservationId, ...reservation, createdAt: nowIso, status: "novo" },
+      restaurantId: restaurant.id
+    });
+    return json({ ok: true, reservationId });
+  }
+
+  if (method === "POST" && pathname === "/api/public/waitlist") {
+    const ip = getClientIp(request);
+    const rate = await consumeRateLimit(
+      env,
+      `waitlist:${ip}`,
+      config.eventMaxPerWindow,
+      config.eventWindowMs
+    );
+    if (!rate.allowed) {
+      return json(
+        { error: "too_many_requests", retryAfterSeconds: rate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(rate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    if (!restaurantSlug) return json({ error: "restaurant_required" }, 400);
+    const restaurant = await getRestaurantBySlug(env, restaurantSlug);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+
+    const waitEntry = sanitizeWaitlistPayload(body);
+    if (!waitEntry.name || !waitEntry.phone) {
+      return json({ error: "name_phone_required" }, 400);
+    }
+
+    const waitlistId = `wait-${crypto.randomUUID()}`;
+    const nowIso = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO waitlist_entries
+       (id, restaurant_id, name, phone, guests, eta_minutes, source, meta_json, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+    )
+      .bind(
+        waitlistId,
+        restaurant.id,
+        waitEntry.name,
+        waitEntry.phone,
+        waitEntry.guests,
+        waitEntry.etaMinutes,
+        waitEntry.source,
+        JSON.stringify(waitEntry.meta || {}),
+        nowIso
+      )
+      .run();
+
+    await recordPublicEvent(env, request, {
+      restaurantId: restaurant.id,
+      restaurant,
+      eventType: "waitlist_join",
+      table: "",
+      meta: { waitlistId, guests: waitEntry.guests, source: waitEntry.source }
+    });
+    await fireRestaurantWebhook(env, restaurant, "waitlist", {
+      type: "waitlist_created",
+      waitlist: { id: waitlistId, ...waitEntry, createdAt: nowIso },
+      restaurantId: restaurant.id
+    });
+    return json({ ok: true, waitlistId });
+  }
+
+  if (method === "POST" && pathname === "/api/public/feedback") {
+    const ip = getClientIp(request);
+    const rate = await consumeRateLimit(
+      env,
+      `feedback:${ip}`,
+      config.eventMaxPerWindow,
+      config.eventWindowMs
+    );
+    if (!rate.allowed) {
+      return json(
+        { error: "too_many_requests", retryAfterSeconds: rate.retryAfterSeconds },
+        429,
+        { "Retry-After": String(rate.retryAfterSeconds) }
+      );
+    }
+
+    const body = await parseJsonBody(request);
+    const restaurantSlug = normalizeSlug(body.restaurantSlug || "");
+    if (!restaurantSlug) return json({ error: "restaurant_required" }, 400);
+    const restaurant = await getRestaurantBySlug(env, restaurantSlug);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+
+    const feedback = sanitizeFeedbackPayload(body);
+    if (!feedback.comment && !feedback.email) {
+      return json({ error: "feedback_required" }, 400);
+    }
+
+    const feedbackId = `fb-${crypto.randomUUID()}`;
+    const nowIso = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO feedback_entries
+       (id, restaurant_id, name, email, rating, comment, source, meta_json, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+    )
+      .bind(
+        feedbackId,
+        restaurant.id,
+        feedback.name,
+        feedback.email,
+        feedback.rating,
+        feedback.comment,
+        feedback.source,
+        JSON.stringify(feedback.meta || {}),
+        nowIso
+      )
+      .run();
+
+    await recordPublicEvent(env, request, {
+      restaurantId: restaurant.id,
+      restaurant,
+      eventType: "feedback_submit",
+      table: "",
+      meta: { feedbackId, rating: feedback.rating, source: feedback.source }
+    });
+    await fireRestaurantWebhook(env, restaurant, "feedback", {
+      type: "feedback_created",
+      feedback: { id: feedbackId, ...feedback, createdAt: nowIso },
+      restaurantId: restaurant.id
+    });
+    return json({ ok: true, feedbackId });
   }
 
   if (method === "POST" && pathname === "/api/login") {
@@ -2201,7 +2780,8 @@ async function handleApi(request, env, url) {
       defaultLanguage: sanitizeLanguageCode(body.defaultLanguage || DEFAULT_LANGUAGE_CODE),
       languages: sanitizeLanguageList(body.languages, body.defaultLanguage || DEFAULT_LANGUAGE_CODE),
       uiMessages: sanitizeUiMessages(body.uiMessages),
-      categoryLabels: sanitizeCategoryLabels(body.categoryLabels)
+      categoryLabels: sanitizeCategoryLabels(body.categoryLabels),
+      integrations: sanitizeIntegrations(body.integrations)
     };
     if (!restaurant.languages.includes(restaurant.defaultLanguage)) {
       restaurant.languages.unshift(restaurant.defaultLanguage);
@@ -2209,8 +2789,8 @@ async function handleApi(request, env, url) {
     }
     await env.DB.prepare(
       `INSERT INTO restaurants
-      (id, name, slug, description, logo, accent, template, hero_images_json, contact_address, contact_phone, contact_email, contact_website, languages_json, default_language, ui_messages_json, category_labels_json)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`
+      (id, name, slug, description, logo, accent, template, hero_images_json, contact_address, contact_phone, contact_email, contact_website, languages_json, default_language, ui_messages_json, category_labels_json, integrations_json)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)`
     )
       .bind(
         restaurant.id,
@@ -2228,7 +2808,8 @@ async function handleApi(request, env, url) {
         JSON.stringify(restaurant.languages),
         restaurant.defaultLanguage,
         JSON.stringify(restaurant.uiMessages),
-        JSON.stringify(restaurant.categoryLabels)
+        JSON.stringify(restaurant.categoryLabels),
+        JSON.stringify(restaurant.integrations)
       )
       .run();
     const persisted = await getRestaurantById(env, restaurant.id);
@@ -2284,6 +2865,9 @@ async function handleApi(request, env, url) {
     if (body.categoryLabels !== undefined) {
       next.categoryLabels = sanitizeCategoryLabels(body.categoryLabels);
     }
+    if (body.integrations !== undefined) {
+      next.integrations = sanitizeIntegrations(body.integrations);
+    }
     next.languageSettings = next.languageSettings || {};
     next.languageSettings.defaultLanguage = sanitizeLanguageCode(
       next.languageSettings.defaultLanguage || currentDefaultLanguage
@@ -2312,8 +2896,9 @@ async function handleApi(request, env, url) {
       `UPDATE restaurants
        SET name = ?1, slug = ?2, description = ?3, logo = ?4, accent = ?5, template = ?6, hero_images_json = ?7,
            contact_address = ?8, contact_phone = ?9, contact_email = ?10, contact_website = ?11,
-           languages_json = ?12, default_language = ?13, ui_messages_json = ?14, category_labels_json = ?15
-       WHERE id = ?16`
+           languages_json = ?12, default_language = ?13, ui_messages_json = ?14, category_labels_json = ?15,
+           integrations_json = ?16
+       WHERE id = ?17`
     )
       .bind(
         next.name,
@@ -2331,6 +2916,7 @@ async function handleApi(request, env, url) {
         (next.languageSettings && next.languageSettings.defaultLanguage) || DEFAULT_LANGUAGE_CODE,
         JSON.stringify(next.uiMessages || {}),
         JSON.stringify(next.categoryLabels || {}),
+        JSON.stringify(next.integrations || {}),
         next.id
       )
       .run();
@@ -2683,6 +3269,101 @@ async function handleApi(request, env, url) {
     await env.DB.prepare("UPDATE orders SET status = ?1 WHERE id = ?2").bind(status, order.id).run();
     order.status = status;
     return json({ order });
+  }
+
+  const listLeadsRoute = method === "GET" && matchRoute("/api/restaurants/:id/leads", pathname);
+  if (listLeadsRoute) {
+    const restaurant = await getRestaurantById(env, listLeadsRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+    const limit = Math.max(10, Math.min(200, toInt(url.searchParams.get("limit"), 80)));
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM leads WHERE restaurant_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+    )
+      .bind(restaurant.id, limit)
+      .all();
+    return json({ leads: (results || []).map(mapLeadRow) });
+  }
+
+  const listReservationsRoute = method === "GET" && matchRoute("/api/restaurants/:id/reservations", pathname);
+  if (listReservationsRoute) {
+    const restaurant = await getRestaurantById(env, listReservationsRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+    const limit = Math.max(10, Math.min(200, toInt(url.searchParams.get("limit"), 80)));
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM reservations WHERE restaurant_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+    )
+      .bind(restaurant.id, limit)
+      .all();
+    return json({ reservations: (results || []).map(mapReservationRow) });
+  }
+
+  const updateReservationRoute = method === "PUT" && matchRoute("/api/reservations/:id", pathname);
+  if (updateReservationRoute) {
+    const row = await env.DB.prepare("SELECT * FROM reservations WHERE id = ?1").bind(updateReservationRoute.id).first();
+    if (!row) return json({ error: "reservation_not_found" }, 404);
+    const reservation = mapReservationRow(row);
+    if (!canAccessRestaurant(currentUser, reservation.restaurantId)) return forbidden();
+    const body = await parseJsonBody(request);
+    const status = sanitizeText(body.status, 24).toLowerCase();
+    const allowed = new Set(["novo", "confirmado", "cancelado", "finalizado"]);
+    if (!allowed.has(status)) return json({ error: "invalid_status" }, 400);
+    await env.DB.prepare("UPDATE reservations SET status = ?1 WHERE id = ?2")
+      .bind(status, reservation.id)
+      .run();
+    reservation.status = status;
+    return json({ reservation });
+  }
+
+  const listWaitlistRoute = method === "GET" && matchRoute("/api/restaurants/:id/waitlist", pathname);
+  if (listWaitlistRoute) {
+    const restaurant = await getRestaurantById(env, listWaitlistRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+    const limit = Math.max(10, Math.min(200, toInt(url.searchParams.get("limit"), 80)));
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM waitlist_entries WHERE restaurant_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+    )
+      .bind(restaurant.id, limit)
+      .all();
+    const waitlist = (results || []).map((row) => ({
+      id: row.id,
+      restaurantId: row.restaurant_id,
+      name: row.name || "",
+      phone: row.phone || "",
+      guests: toInt(row.guests, 2),
+      etaMinutes: toInt(row.eta_minutes, 0),
+      source: row.source || "",
+      meta: parseJsonSafe(row.meta_json, {}),
+      createdAt: row.created_at
+    }));
+    return json({ waitlist });
+  }
+
+  const listFeedbackRoute = method === "GET" && matchRoute("/api/restaurants/:id/feedback", pathname);
+  if (listFeedbackRoute) {
+    const restaurant = await getRestaurantById(env, listFeedbackRoute.id);
+    if (!restaurant) return json({ error: "restaurant_not_found" }, 404);
+    if (!canAccessRestaurant(currentUser, restaurant.id)) return forbidden();
+    const limit = Math.max(10, Math.min(200, toInt(url.searchParams.get("limit"), 80)));
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM feedback_entries WHERE restaurant_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+    )
+      .bind(restaurant.id, limit)
+      .all();
+    const feedback = (results || []).map((row) => ({
+      id: row.id,
+      restaurantId: row.restaurant_id,
+      name: row.name || "",
+      email: row.email || "",
+      rating: toInt(row.rating, 0),
+      comment: row.comment || "",
+      source: row.source || "",
+      meta: parseJsonSafe(row.meta_json, {}),
+      createdAt: row.created_at
+    }));
+    return json({ feedback });
   }
 
   const listJobsRoute = method === "GET" && matchRoute("/api/restaurants/:id/model-jobs", pathname);

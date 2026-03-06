@@ -58,6 +58,23 @@ const twitterTitle = document.getElementById("twitter-title");
 const twitterDescription = document.getElementById("twitter-description");
 const twitterImage = document.getElementById("twitter-image");
 const restaurantJsonLd = document.getElementById("restaurant-jsonld");
+const networkPill = document.getElementById("network-pill");
+const installAppButton = document.getElementById("install-app");
+const compactToggle = document.getElementById("compact-toggle");
+const favoritesToggle = document.getElementById("favorites-toggle");
+const quickActions = document.getElementById("quick-actions");
+const reservationForm = document.getElementById("reservation-form");
+const reservationNameInput = document.getElementById("reservation-name");
+const reservationPhoneInput = document.getElementById("reservation-phone");
+const reservationGuestsInput = document.getElementById("reservation-guests");
+const reservationDateInput = document.getElementById("reservation-date");
+const reservationTimeInput = document.getElementById("reservation-time");
+const reservationStatus = document.getElementById("reservation-status");
+const leadForm = document.getElementById("lead-form");
+const leadNameInput = document.getElementById("lead-name");
+const leadEmailInput = document.getElementById("lead-email");
+const leadPhoneInput = document.getElementById("lead-phone");
+const leadStatus = document.getElementById("lead-status");
 
 const LANGUAGES = [
   { code: "pt-BR", tag: "PT", label: "Português do Brasil", subtitle: "Padrão do restaurante" },
@@ -312,6 +329,8 @@ const cartKey = slug ? `menuz_cart_${slug}` : "menuz_cart_template";
 const tableKey = slug ? `menuz_table_${slug}` : "menuz_table_template";
 const categoryKey = slug ? `menuz_category_${slug}` : "menuz_category_template";
 const searchTermKey = slug ? `menuz_search_${slug}` : "menuz_search_template";
+const favoritesKey = slug ? `menuz_favorites_${slug}` : "menuz_favorites_template";
+const densityKey = slug ? `menuz_density_${slug}` : "menuz_density_template";
 let searchDebounceTimer = null;
 let lastFocusedElement = null;
 const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
@@ -322,6 +341,7 @@ const state = {
   baseItems: [],
   baseDescription: "",
   baseCategories: [],
+  integrations: {},
   cart: [],
   selectedCategory: (() => {
     try {
@@ -338,7 +358,18 @@ const state = {
   language: localStorage.getItem(languageKey) || "pt-BR",
   defaultLanguage: "pt-BR",
   translationCache: loadTranslationCache(),
-  isTranslating: false
+  isTranslating: false,
+  favorites: (() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(favoritesKey) || "[]");
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  })(),
+  showFavoritesOnly: false,
+  deferredInstallPrompt: null,
+  loadedIntegrationScripts: new Set()
 };
 const HERO_FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1600&q=80";
@@ -747,7 +778,16 @@ function applyLanguageTexts() {
     const isSending = cartSubmit.dataset.sending === "1";
     cartSubmit.textContent = isSending ? t("sending") : t("submit");
   }
+  if (compactToggle) {
+    compactToggle.textContent = document.body.classList.contains("density-compact") ? "Confortavel" : "Compacto";
+  }
+  if (favoritesToggle) {
+    favoritesToggle.textContent = state.showFavoritesOnly ? "Todos" : "Favoritos";
+    favoritesToggle.classList.toggle("active", state.showFavoritesOnly);
+  }
   tableInput.placeholder = t("tablePlaceholder");
+  if (reservationPhoneInput) reservationPhoneInput.placeholder = "Telefone";
+  if (leadEmailInput) leadEmailInput.placeholder = "Email";
   document.documentElement.lang = (state.language || "pt-BR").toLowerCase();
 }
 
@@ -919,6 +959,269 @@ function saveSelectedCategory() {
   }
 }
 
+function getIntegrations() {
+  const base = state.restaurant && state.restaurant.integrations ? state.restaurant.integrations : {};
+  const quickLinks = base.quickLinks && typeof base.quickLinks === "object" ? base.quickLinks : {};
+  const analytics = base.analytics && typeof base.analytics === "object" ? base.analytics : {};
+  const payments = base.payments && typeof base.payments === "object" ? base.payments : {};
+  const features = base.features && typeof base.features === "object" ? base.features : {};
+  const visual = base.visual && typeof base.visual === "object" ? base.visual : {};
+  return {
+    quickLinks,
+    analytics,
+    payments,
+    features,
+    visual
+  };
+}
+
+function saveFavorites() {
+  try {
+    localStorage.setItem(favoritesKey, JSON.stringify(state.favorites || []));
+  } catch {
+    // ignore
+  }
+}
+
+function isFavorite(itemId) {
+  return state.favorites.includes(itemId);
+}
+
+function toggleFavorite(itemId) {
+  if (!itemId) return;
+  if (isFavorite(itemId)) {
+    state.favorites = state.favorites.filter((id) => id !== itemId);
+    announce("Item removido dos favoritos.");
+  } else {
+    state.favorites = [...state.favorites, itemId];
+    announce("Item adicionado aos favoritos.");
+  }
+  saveFavorites();
+  renderMenu();
+}
+
+function applyVisualSettings() {
+  const integrations = getIntegrations();
+  const visual = integrations.visual || {};
+  document.body.classList.remove(
+    "preset-clean",
+    "preset-editorial",
+    "preset-bold",
+    "preset-night",
+    "preset-beach",
+    "preset-bistro"
+  );
+  document.body.classList.add(`preset-${visual.preset || "clean"}`);
+
+  let savedDensity = visual.density || "comfortable";
+  try {
+    savedDensity = localStorage.getItem(densityKey) || savedDensity;
+  } catch {
+    // ignore
+  }
+  document.body.classList.toggle("density-compact", savedDensity === "compact");
+  if (compactToggle) {
+    compactToggle.classList.toggle("active", savedDensity === "compact");
+  }
+}
+
+function openExternalLink(url, eventType) {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+  trackPublicEvent(eventType || "social_open", {
+    meta: { url }
+  });
+}
+
+function renderQuickActions() {
+  if (!quickActions) return;
+  const integrations = getIntegrations();
+  const links = integrations.quickLinks || {};
+  const payments = integrations.payments || {};
+  const actions = [
+    { label: "WhatsApp", url: links.whatsapp, eventType: "social_open" },
+    { label: "Reservar", url: links.reservation, eventType: "reservation_submit" },
+    { label: "Delivery", url: links.delivery, eventType: "delivery_open" },
+    { label: "Mapa", url: links.maps, eventType: "map_open" },
+    { label: "Instagram", url: links.instagram, eventType: "social_open" },
+    { label: "Review", url: links.review, eventType: "social_open" },
+    { label: "Fidelidade", url: links.loyalty, eventType: "social_open" },
+    { label: "Pix", url: payments.pixKey ? `copy:${payments.pixKey}` : "", eventType: "checkout_start" },
+    { label: "Stripe", url: payments.stripeCheckoutUrl, eventType: "checkout_start" },
+    { label: "PayPal", url: payments.paypalMeUrl, eventType: "checkout_start" }
+  ].filter((action) => action.url);
+
+  quickActions.innerHTML = "";
+  if (!actions.length || integrations.features?.enableQuickActions === false) {
+    quickActions.classList.add("hidden");
+    return;
+  }
+  quickActions.classList.remove("hidden");
+
+  actions.forEach((action) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "quick-action";
+    button.textContent = action.label;
+    button.addEventListener("click", async () => {
+      if (String(action.url).startsWith("copy:")) {
+        const value = String(action.url).slice(5);
+        try {
+          await navigator.clipboard.writeText(value);
+          announce("Chave copiada.");
+        } catch {
+          announce("Nao foi possivel copiar agora.");
+        }
+        return;
+      }
+      openExternalLink(action.url, action.eventType);
+    });
+    quickActions.appendChild(button);
+  });
+}
+
+async function loadExternalScript(id, src, afterLoad) {
+  if (!src || state.loadedIntegrationScripts.has(id)) return;
+  const existing = document.querySelector(`script[data-int="${id}"]`);
+  if (existing) {
+    state.loadedIntegrationScripts.add(id);
+    if (typeof afterLoad === "function") afterLoad();
+    return;
+  }
+  await new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.dataset.int = id;
+    script.onload = resolve;
+    script.onerror = resolve;
+    document.head.appendChild(script);
+  });
+  state.loadedIntegrationScripts.add(id);
+  if (typeof afterLoad === "function") afterLoad();
+}
+
+async function applyAnalyticsIntegrations() {
+  const analytics = getIntegrations().analytics || {};
+  if (analytics.gtmId) {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event: "menuz_init" });
+    await loadExternalScript(
+      "gtm",
+      `https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(analytics.gtmId)}`
+    );
+  }
+
+  if (analytics.ga4Id) {
+    await loadExternalScript(
+      "ga4",
+      `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(analytics.ga4Id)}`,
+      () => {
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {
+          window.dataLayer.push(arguments);
+        }
+        window.gtag = window.gtag || gtag;
+        window.gtag("js", new Date());
+        window.gtag("config", analytics.ga4Id);
+      }
+    );
+  }
+
+  if (analytics.clarityId) {
+    const clarityId = analytics.clarityId;
+    window.clarity =
+      window.clarity ||
+      function clarity() {
+        (window.clarity.q = window.clarity.q || []).push(arguments);
+      };
+    await loadExternalScript("clarity", "https://www.clarity.ms/tag/" + encodeURIComponent(clarityId));
+  }
+
+  if (analytics.metaPixelId) {
+    window.fbq =
+      window.fbq ||
+      function fbq() {
+        if (window.fbq.callMethod) {
+          window.fbq.callMethod.apply(window.fbq, arguments);
+        } else {
+          (window.fbq.queue = window.fbq.queue || []).push(arguments);
+        }
+      };
+    window.fbq.push = window.fbq;
+    window.fbq.loaded = true;
+    window.fbq.version = "2.0";
+    await loadExternalScript("meta-pixel", "https://connect.facebook.net/en_US/fbevents.js", () => {
+      window.fbq("init", analytics.metaPixelId);
+      window.fbq("track", "PageView");
+    });
+  }
+
+  if (analytics.tiktokPixelId) {
+    const ttq = (window.ttq = window.ttq || []);
+    ttq.methods = ["page", "track", "identify", "instances", "debug", "on", "off", "once", "ready", "alias", "group", "enableCookie", "disableCookie"];
+    ttq.setAndDefer = function setAndDefer(target, method) {
+      target[method] = function wrapped() {
+        target.push([method].concat(Array.prototype.slice.call(arguments, 0)));
+      };
+    };
+    for (let i = 0; i < ttq.methods.length; i += 1) {
+      ttq.setAndDefer(ttq, ttq.methods[i]);
+    }
+    await loadExternalScript("tiktok", "https://analytics.tiktok.com/i18n/pixel/events.js", () => {
+      if (window.ttq && window.ttq.load) {
+        window.ttq.load(analytics.tiktokPixelId);
+        window.ttq.page();
+      }
+    });
+  }
+}
+
+function initNetworkPill() {
+  if (!networkPill) return;
+  const update = () => {
+    const online = navigator.onLine;
+    networkPill.textContent = online ? "Online" : "Offline";
+    networkPill.classList.toggle("offline", !online);
+  };
+  update();
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+}
+
+function initInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    const integrations = getIntegrations();
+    if (installAppButton && integrations.features?.enableInstallPrompt !== false) {
+      installAppButton.classList.remove("hidden");
+    }
+  });
+
+  if (installAppButton) {
+    installAppButton.addEventListener("click", async () => {
+      if (!state.deferredInstallPrompt) return;
+      state.deferredInstallPrompt.prompt();
+      await state.deferredInstallPrompt.userChoice;
+      state.deferredInstallPrompt = null;
+      installAppButton.classList.add("hidden");
+      trackPublicEvent("pwa_install");
+    });
+  }
+}
+
+function updateFormsVisibility() {
+  const integrations = getIntegrations();
+  const features = integrations.features || {};
+  if (reservationForm) {
+    reservationForm.classList.toggle("hidden", !features.showReservationForm);
+  }
+  if (leadForm) {
+    leadForm.classList.toggle("hidden", !features.showLeadForm);
+  }
+}
+
 function loadCart() {
   try {
     const raw = localStorage.getItem(cartKey);
@@ -993,6 +1296,7 @@ function getFilteredItems() {
       category.toLowerCase() === state.selectedCategory.toLowerCase();
 
     if (!categoryMatch) return false;
+    if (state.showFavoritesOnly && !isFavorite(item.id)) return false;
 
     if (!text) return true;
     const haystack = `${item.name || ""} ${item.description || ""} ${category}`.toLowerCase();
@@ -1078,7 +1382,7 @@ function buildSection(title, items) {
 
   items.forEach((item) => {
     const row = document.createElement("article");
-    row.className = "item-row";
+    row.className = `item-row ${isFavorite(item.id) ? "favorite" : ""}`.trim();
     row.setAttribute("aria-label", `${item.name} - R$ ${formatPrice(item.price)}`);
     const thumb = item.image
       ? `<img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" />`
@@ -1103,6 +1407,9 @@ function buildSection(title, items) {
         <div class="item-links">
           <a data-ar-link href="${itemArUrl}">${escapeHtml(t("ar"))}</a>
           <button type="button" data-add>${escapeHtml(t("add"))}</button>
+          <button type="button" class="favorite-btn ${isFavorite(item.id) ? "active" : ""}" data-favorite>
+            ${isFavorite(item.id) ? "❤" : "♡"}
+          </button>
         </div>
       </div>
       <a class="item-thumb" data-ar-link href="${itemArUrl}" aria-label="Abrir ${escapeHtml(item.name)} em AR">
@@ -1111,6 +1418,7 @@ function buildSection(title, items) {
     `;
 
     row.querySelector("[data-add]").addEventListener("click", () => addToCart(item.id));
+    row.querySelector("[data-favorite]").addEventListener("click", () => toggleFavorite(item.id));
     const thumbImage = row.querySelector(".item-thumb img");
     if (thumbImage) {
       thumbImage.addEventListener("error", () => {
@@ -1138,6 +1446,7 @@ function buildSection(title, items) {
 function renderMenu() {
   const filteredItems = getFilteredItems();
   menuList.innerHTML = "";
+  emptyState.textContent = state.showFavoritesOnly ? "Nenhum favorito." : t("noItemsFound");
   emptyState.classList.toggle("hidden", filteredItems.length > 0);
   if (filteredItems.length === 0) return;
 
@@ -1399,6 +1708,7 @@ async function loadRestaurant() {
 
     const data = await res.json();
     state.restaurant = data.restaurant;
+    state.integrations = (state.restaurant && state.restaurant.integrations) || {};
     state.baseItems = Array.isArray(data.items) ? data.items.map((item) => ({ ...item })) : [];
     state.items = state.baseItems.map((item) => ({ ...item }));
     state.baseCategories = [...new Set(state.baseItems.map((item) => inferCategory(item)))];
@@ -1432,10 +1742,14 @@ async function loadRestaurant() {
 
     await applyTranslatedContent();
     setTheme();
+    applyVisualSettings();
     applyLanguageTexts();
     renderDrawer();
+    renderQuickActions();
+    updateFormsVisibility();
     renderHero();
     startHeroAutoplay();
+    await applyAnalyticsIntegrations();
     const heroImage = state.heroImages[0] || HERO_FALLBACK_IMAGE;
     setSeoMeta({
       title: `${state.restaurant.name || "Cardapio"} | Cardapio digital`,
@@ -1462,6 +1776,9 @@ async function loadRestaurant() {
     loadCart();
     updateCartButton();
     renderCart();
+    if (reservationDateInput && !reservationDateInput.value) {
+      reservationDateInput.value = new Date().toISOString().slice(0, 10);
+    }
   } catch {
     restaurantName.textContent = "Falha de conexao";
     restaurantDesc.textContent = "Nao foi possivel carregar o cardapio agora.";
@@ -1647,7 +1964,104 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+if (compactToggle) {
+  compactToggle.addEventListener("click", () => {
+    const currentlyCompact = document.body.classList.contains("density-compact");
+    const nextCompact = !currentlyCompact;
+    document.body.classList.toggle("density-compact", nextCompact);
+    try {
+      localStorage.setItem(densityKey, nextCompact ? "compact" : "comfortable");
+    } catch {
+      // ignore
+    }
+    applyLanguageTexts();
+  });
+}
+
+if (favoritesToggle) {
+  favoritesToggle.addEventListener("click", () => {
+    state.showFavoritesOnly = !state.showFavoritesOnly;
+    applyLanguageTexts();
+    renderMenu();
+  });
+}
+
+if (reservationForm) {
+  reservationForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.restaurant || !state.restaurant.slug) return;
+    const payload = {
+      restaurantSlug: state.restaurant.slug,
+      name: (reservationNameInput && reservationNameInput.value ? reservationNameInput.value : "").trim(),
+      phone: (reservationPhoneInput && reservationPhoneInput.value ? reservationPhoneInput.value : "").trim(),
+      guests: Number(reservationGuestsInput && reservationGuestsInput.value ? reservationGuestsInput.value : 2) || 2,
+      date: reservationDateInput && reservationDateInput.value ? reservationDateInput.value : "",
+      time: reservationTimeInput && reservationTimeInput.value ? reservationTimeInput.value : "",
+      source: "menu_public"
+    };
+    if (!payload.name || !payload.phone) {
+      if (reservationStatus) reservationStatus.textContent = "Informe nome e telefone.";
+      return;
+    }
+    if (reservationStatus) reservationStatus.textContent = "Enviando...";
+    try {
+      const response = await fetch("/api/public/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        if (reservationStatus) reservationStatus.textContent = "Falha ao enviar.";
+        return;
+      }
+      if (reservationStatus) reservationStatus.textContent = "Reserva enviada.";
+      reservationForm.reset();
+      announce("Reserva enviada.");
+    } catch {
+      if (reservationStatus) reservationStatus.textContent = "Falha ao enviar.";
+    }
+  });
+}
+
+if (leadForm) {
+  leadForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!state.restaurant || !state.restaurant.slug) return;
+    const payload = {
+      restaurantSlug: state.restaurant.slug,
+      name: (leadNameInput && leadNameInput.value ? leadNameInput.value : "").trim(),
+      email: (leadEmailInput && leadEmailInput.value ? leadEmailInput.value : "").trim(),
+      phone: (leadPhoneInput && leadPhoneInput.value ? leadPhoneInput.value : "").trim(),
+      source: "menu_public"
+    };
+    if (!payload.email && !payload.phone) {
+      if (leadStatus) leadStatus.textContent = "Informe email ou telefone.";
+      return;
+    }
+    if (leadStatus) leadStatus.textContent = "Enviando...";
+    try {
+      const response = await fetch("/api/public/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        if (leadStatus) leadStatus.textContent = "Falha ao enviar.";
+        return;
+      }
+      if (leadStatus) leadStatus.textContent = "Contato salvo.";
+      leadForm.reset();
+      announce("Contato salvo.");
+    } catch {
+      if (leadStatus) leadStatus.textContent = "Falha ao enviar.";
+    }
+  });
+}
+
 cartSubmit.addEventListener("click", sendOrder);
 
+initNetworkPill();
+initInstallPrompt();
+applyVisualSettings();
 registerServiceWorker();
 loadRestaurant();

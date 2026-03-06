@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS restaurants (
   languages_json TEXT DEFAULT '[]',
   default_language TEXT DEFAULT 'pt-BR',
   ui_messages_json TEXT DEFAULT '{}',
-  category_labels_json TEXT DEFAULT '{}'
+  category_labels_json TEXT DEFAULT '{}',
+  integrations_json TEXT DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS items (
@@ -115,6 +116,62 @@ CREATE TABLE IF NOT EXISTS events (
   FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS leads (
+  id TEXT PRIMARY KEY,
+  restaurant_id TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  source TEXT DEFAULT '',
+  message TEXT DEFAULT '',
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reservations (
+  id TEXT PRIMARY KEY,
+  restaurant_id TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  guests INTEGER NOT NULL DEFAULT 2,
+  date_label TEXT DEFAULT '',
+  time_label TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  status TEXT DEFAULT 'novo',
+  source TEXT DEFAULT '',
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS waitlist_entries (
+  id TEXT PRIMARY KEY,
+  restaurant_id TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  guests INTEGER NOT NULL DEFAULT 2,
+  eta_minutes INTEGER NOT NULL DEFAULT 0,
+  source TEXT DEFAULT '',
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS feedback_entries (
+  id TEXT PRIMARY KEY,
+  restaurant_id TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  rating INTEGER NOT NULL DEFAULT 0,
+  comment TEXT DEFAULT '',
+  source TEXT DEFAULT '',
+  meta_json TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_restaurant ON items(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_restaurant ON model_jobs(restaurant_id);
@@ -123,3 +180,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_events_restaurant_created ON events(restaurant_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_type_created ON events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_leads_restaurant_created ON leads(restaurant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_reservations_restaurant_created ON reservations(restaurant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_waitlist_restaurant_created ON waitlist_entries(restaurant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_restaurant_created ON feedback_entries(restaurant_id, created_at);

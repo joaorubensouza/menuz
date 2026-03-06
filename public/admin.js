@@ -4,6 +4,10 @@ const state = {
   restaurants: [],
   items: [],
   orders: [],
+  leads: [],
+  reservations: [],
+  waitlist: [],
+  feedback: [],
   modelJobs: [],
   aiProviders: [],
   aiSettings: {
@@ -72,6 +76,11 @@ const analyticsSummary = document.getElementById("analytics-summary");
 const analyticsTopAr = document.getElementById("analytics-top-ar");
 const analyticsTopOrders = document.getElementById("analytics-top-orders");
 const analyticsAlerts = document.getElementById("analytics-alerts");
+const engagementRefresh = document.getElementById("engagement-refresh");
+const leadsList = document.getElementById("leads-list");
+const reservationsList = document.getElementById("reservations-list");
+const waitlistList = document.getElementById("waitlist-list");
+const feedbackList = document.getElementById("feedback-list");
 
 const scannerInfo = document.getElementById("scanner-info");
 const scannerView = document.getElementById("scanner-view");
@@ -501,7 +510,8 @@ restaurantForm.addEventListener("submit", async (event) => {
       defaultLanguage: createDefaultLanguage,
       languages: createLanguages,
       uiMessages: parseJsonField("restaurant-ui-messages", {}, "Mensagens customizadas"),
-      categoryLabels: parseJsonField("restaurant-category-labels", {}, "Categorias customizadas")
+      categoryLabels: parseJsonField("restaurant-category-labels", {}, "Categorias customizadas"),
+      integrations: parseJsonField("restaurant-integrations", {}, "Integracoes")
     };
     const data = await api("/api/restaurants", {
       method: "POST",
@@ -515,6 +525,7 @@ restaurantForm.addEventListener("submit", async (event) => {
     syncLanguageControls("restaurant-default-language", "restaurant-languages");
     setJsonField("restaurant-ui-messages", {});
     setJsonField("restaurant-category-labels", {});
+    setJsonField("restaurant-integrations", {});
   } catch (err) {
     alert(err.message || "Erro ao criar restaurante.");
   }
@@ -545,7 +556,8 @@ restaurantEditForm.addEventListener("submit", async (event) => {
       defaultLanguage: editDefaultLanguage,
       languages: editLanguages,
       uiMessages: parseJsonField("edit-ui-messages", {}, "Mensagens customizadas"),
-      categoryLabels: parseJsonField("edit-category-labels", {}, "Categorias customizadas")
+      categoryLabels: parseJsonField("edit-category-labels", {}, "Categorias customizadas"),
+      integrations: parseJsonField("edit-integrations", {}, "Integracoes")
     };
     const data = await api(`/api/restaurants/${state.activeRestaurant.id}`, {
       method: "PUT",
@@ -814,9 +826,17 @@ scanStop.addEventListener("click", () => {
 ordersRefresh.addEventListener("click", () => {
   if (state.activeRestaurant) {
     loadOrders(state.activeRestaurant.id);
+    loadEngagement(state.activeRestaurant.id);
     loadAnalytics(state.activeRestaurant.id);
   }
 });
+
+if (engagementRefresh) {
+  engagementRefresh.addEventListener("click", () => {
+    if (!state.activeRestaurant) return;
+    loadEngagement(state.activeRestaurant.id);
+  });
+}
 
 if (analyticsRefresh) {
   analyticsRefresh.addEventListener("click", () => {
@@ -903,6 +923,7 @@ function fillRestaurantForm(restaurant) {
   syncLanguageControls("edit-default-language", "edit-languages");
   setJsonField("edit-ui-messages", restaurant.uiMessages || {});
   setJsonField("edit-category-labels", restaurant.categoryLabels || {});
+  setJsonField("edit-integrations", restaurant.integrations || {});
 }
 
 function populateModelJobItems() {
@@ -1292,6 +1313,79 @@ function renderOrders() {
   });
 }
 
+function renderSimpleRows(container, rows, renderRowHtml, emptyText) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!rows || rows.length === 0) {
+    container.innerHTML = `<div class="muted">${emptyText}</div>`;
+    return;
+  }
+  rows.forEach((rowData) => {
+    const row = document.createElement("div");
+    row.className = "analytics-line";
+    row.innerHTML = renderRowHtml(rowData);
+    container.appendChild(row);
+  });
+}
+
+function renderLeads() {
+  renderSimpleRows(
+    leadsList,
+    state.leads,
+    (lead) =>
+      `<div><strong>${lead.name || "Lead"}</strong><div class="muted">${lead.email || lead.phone || "-"}</div></div><span class="muted">${(lead.createdAt || "").slice(0, 10)}</span>`,
+    "Sem leads."
+  );
+}
+
+function renderReservations() {
+  if (!reservationsList) return;
+  reservationsList.innerHTML = "";
+  if (!state.reservations.length) {
+    reservationsList.innerHTML = "<div class=\"muted\">Sem reservas.</div>";
+    return;
+  }
+  state.reservations.forEach((reservation) => {
+    const row = document.createElement("div");
+    row.className = "table-row";
+    row.innerHTML = `
+      <div>
+        <strong>${reservation.name || "Reserva"}</strong>
+        <div class="muted">${reservation.guests || 2} pessoas · ${reservation.date || "-"} ${reservation.time || ""}</div>
+      </div>
+      <div class="status-badge status-${reservation.status || "novo"}">${reservation.status || "novo"}</div>
+      <div class="table-actions">
+        <button class="btn btn-outline" data-res-status="confirmado">Confirmar</button>
+        <button class="btn btn-outline" data-res-status="cancelado">Cancelar</button>
+      </div>
+    `;
+    row.querySelectorAll("[data-res-status]").forEach((button) => {
+      button.addEventListener("click", () => updateReservationStatus(reservation.id, button.dataset.resStatus));
+    });
+    reservationsList.appendChild(row);
+  });
+}
+
+function renderWaitlist() {
+  renderSimpleRows(
+    waitlistList,
+    state.waitlist,
+    (entry) =>
+      `<div><strong>${entry.name || "Fila"}</strong><div class="muted">${entry.guests || 2} pessoas</div></div><span class="muted">${(entry.createdAt || "").slice(0, 10)}</span>`,
+    "Sem fila de espera."
+  );
+}
+
+function renderFeedback() {
+  renderSimpleRows(
+    feedbackList,
+    state.feedback,
+    (entry) =>
+      `<div><strong>${entry.name || "Feedback"}</strong><div class="muted">Nota ${entry.rating || 0}/5 · ${(entry.comment || "-").slice(0, 80)}</div></div><span class="muted">${(entry.createdAt || "").slice(0, 10)}</span>`,
+    "Sem feedback."
+  );
+}
+
 function renderOrderActions(status) {
   if (status === "entregue" || status === "cancelado") {
     return "<span class=\"muted\">Finalizado</span>";
@@ -1474,6 +1568,7 @@ async function selectRestaurant(id) {
   }
   await loadItems(id);
   await loadOrders(id);
+  await loadEngagement(id);
   await loadModelJobs(id);
   await loadAnalytics(id);
   if (lizzWidget) lizzWidget.classList.remove("hidden");
@@ -1676,6 +1771,30 @@ async function loadOrders(restaurantId) {
   }
 }
 
+async function loadEngagement(restaurantId) {
+  try {
+    const [leadsData, reservationsData, waitlistData, feedbackData] = await Promise.all([
+      api(`/api/restaurants/${restaurantId}/leads?limit=80`),
+      api(`/api/restaurants/${restaurantId}/reservations?limit=80`),
+      api(`/api/restaurants/${restaurantId}/waitlist?limit=80`),
+      api(`/api/restaurants/${restaurantId}/feedback?limit=80`)
+    ]);
+    state.leads = leadsData.leads || [];
+    state.reservations = reservationsData.reservations || [];
+    state.waitlist = waitlistData.waitlist || [];
+    state.feedback = feedbackData.feedback || [];
+  } catch {
+    state.leads = [];
+    state.reservations = [];
+    state.waitlist = [];
+    state.feedback = [];
+  }
+  renderLeads();
+  renderReservations();
+  renderWaitlist();
+  renderFeedback();
+}
+
 async function loadAnalytics(restaurantId) {
   if (!analyticsSummary || !analyticsTopAr || !analyticsTopOrders) return;
   const days = Number((analyticsDays && analyticsDays.value) || 30) || 30;
@@ -1728,6 +1847,19 @@ async function updateOrderStatus(orderId, status) {
     await loadOrders(state.activeRestaurant.id);
     await loadAnalytics(state.activeRestaurant.id);
   } catch (err) {
+    // ignore
+  }
+}
+
+async function updateReservationStatus(reservationId, status) {
+  if (!state.activeRestaurant) return;
+  try {
+    await api(`/api/reservations/${reservationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status })
+    });
+    await loadEngagement(state.activeRestaurant.id);
+  } catch {
     // ignore
   }
 }

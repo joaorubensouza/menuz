@@ -76,6 +76,15 @@
       <p id="restaurant-desc"></p>
     </section>
 
+    <section class="status-strip">
+      <span class="status-pill" id="network-pill">Online</span>
+      <button class="status-btn hidden" id="install-app" type="button">Instalar</button>
+      <button class="status-btn" id="compact-toggle" type="button">Compacto</button>
+      <button class="status-btn" id="favorites-toggle" type="button">Favoritos</button>
+    </section>
+
+    <section class="quick-actions hidden" id="quick-actions"></section>
+
     <main class="page" id="main-content">
       <section class="mode-strip" id="mode-strip"></section>
 
@@ -84,6 +93,36 @@
       <section class="menu-sections" id="menu-list"></section>
       <section class="empty-state hidden" id="empty-state">
         Nenhum item.
+      </section>
+
+      <section class="mini-form-grid">
+        <form class="mini-form hidden" id="reservation-form">
+          <div class="mini-form-head">
+            <h2>Reserva</h2>
+            <span id="reservation-status" class="muted"></span>
+          </div>
+          <div class="mini-fields">
+            <input id="reservation-name" type="text" placeholder="Nome" autocomplete="name" />
+            <input id="reservation-phone" type="tel" placeholder="Telefone" autocomplete="tel" />
+            <input id="reservation-guests" type="number" min="1" max="20" value="2" placeholder="Pessoas" />
+            <input id="reservation-date" type="date" />
+            <input id="reservation-time" type="time" />
+            <button type="submit">Enviar reserva</button>
+          </div>
+        </form>
+
+        <form class="mini-form hidden" id="lead-form">
+          <div class="mini-form-head">
+            <h2>Contato</h2>
+            <span id="lead-status" class="muted"></span>
+          </div>
+          <div class="mini-fields mini-fields-lead">
+            <input id="lead-name" type="text" placeholder="Nome" autocomplete="name" />
+            <input id="lead-email" type="email" placeholder="Email" autocomplete="email" />
+            <input id="lead-phone" type="tel" placeholder="Telefone" autocomplete="tel" />
+            <button type="submit">Receber novidades</button>
+          </div>
+        </form>
       </section>
     </main>
 
