@@ -59,10 +59,20 @@ const twitterDescription = document.getElementById("twitter-description");
 const twitterImage = document.getElementById("twitter-image");
 const restaurantJsonLd = document.getElementById("restaurant-jsonld");
 const networkPill = document.getElementById("network-pill");
+const techClockPill = document.getElementById("tech-clock");
+const techLatencyPill = document.getElementById("tech-latency");
 const installAppButton = document.getElementById("install-app");
+const voiceSearchButton = document.getElementById("voice-search");
+const commandPaletteToggle = document.getElementById("command-palette-toggle");
+const techModeToggle = document.getElementById("tech-mode-toggle");
 const compactToggle = document.getElementById("compact-toggle");
 const favoritesToggle = document.getElementById("favorites-toggle");
 const quickActions = document.getElementById("quick-actions");
+const aiRail = document.getElementById("ai-rail");
+const commandModal = document.getElementById("command-modal");
+const commandClose = document.getElementById("command-close");
+const commandInput = document.getElementById("command-input");
+const commandList = document.getElementById("command-list");
 const engagementForms = document.getElementById("engagement-forms");
 const reservationForm = document.getElementById("reservation-form");
 const reservationNameInput = document.getElementById("reservation-name");
@@ -345,6 +355,7 @@ const searchTermKey = slug ? `menuz_search_${slug}` : "menuz_search_template";
 const favoritesKey = slug ? `menuz_favorites_${slug}` : "menuz_favorites_template";
 const densityKey = slug ? `menuz_density_${slug}` : "menuz_density_template";
 const guestProfileKey = slug ? `menuz_guest_${slug}` : "menuz_guest_template";
+const techModeKey = slug ? `menuz_tech_mode_${slug}` : "menuz_tech_mode_template";
 let searchDebounceTimer = null;
 let lastFocusedElement = null;
 const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
@@ -382,6 +393,18 @@ const state = {
     }
   })(),
   showFavoritesOnly: false,
+  techModeEnabled: (() => {
+    try {
+      return localStorage.getItem(techModeKey) === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  commandIndex: 0,
+  commandResults: [],
+  commandShortcuts: [],
+  voiceRecognition: null,
+  heroTouchStartX: 0,
   deferredInstallPrompt: null,
   loadedIntegrationScripts: new Set()
 };
@@ -813,7 +836,424 @@ function applyLanguageTexts() {
   if (feedbackNameInput) feedbackNameInput.placeholder = "Nome";
   if (feedbackEmailInput) feedbackEmailInput.placeholder = "Email";
   if (feedbackCommentInput) feedbackCommentInput.placeholder = "Comentario curto";
+  if (voiceSearchButton) voiceSearchButton.textContent = voiceSearchButton.classList.contains("active") ? "Ouvindo..." : "Voz";
+  if (commandPaletteToggle) commandPaletteToggle.textContent = "Comandos";
+  if (state.voiceRecognition) {
+    state.voiceRecognition.lang = (state.language || "pt-BR").replace("_", "-");
+  }
   document.documentElement.lang = (state.language || "pt-BR").toLowerCase();
+}
+
+function setTechMode(enabled, options = {}) {
+  const config = {
+    persist: options.persist !== false,
+    track: options.track !== false
+  };
+  state.techModeEnabled = Boolean(enabled);
+  document.body.classList.toggle("tech-mode", state.techModeEnabled);
+  if (techModeToggle) {
+    techModeToggle.classList.toggle("active", state.techModeEnabled);
+    techModeToggle.textContent = state.techModeEnabled ? "Tech ON" : "Tech";
+  }
+  if (techClockPill) {
+    techClockPill.classList.toggle("hidden", !state.techModeEnabled);
+  }
+  if (techLatencyPill) {
+    techLatencyPill.classList.toggle("hidden", !state.techModeEnabled);
+  }
+  if (config.persist) {
+    try {
+      localStorage.setItem(techModeKey, state.techModeEnabled ? "1" : "0");
+    } catch {
+      // no-op
+    }
+  }
+  if (config.track) {
+    trackPublicEvent("feature_toggle", { meta: { feature: "tech_mode", enabled: state.techModeEnabled } });
+  }
+}
+
+function initTechModeControls() {
+  setTechMode(state.techModeEnabled, { persist: false, track: false });
+  if (techModeToggle) {
+    techModeToggle.addEventListener("click", () => {
+      setTechMode(!state.techModeEnabled);
+    });
+  }
+}
+
+function updateTechClock() {
+  if (!techClockPill) return;
+  const text = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  techClockPill.textContent = text;
+}
+
+async function probeTechLatency() {
+  if (!techLatencyPill) return;
+  const started = performance.now();
+  try {
+    const response = await fetch(`/api/health?ts=${Date.now()}`, { cache: "no-store" });
+    const elapsed = Math.round(performance.now() - started);
+    const quality = response.ok ? (elapsed <= 120 ? "Excelente" : elapsed <= 320 ? "Boa" : "Alta") : "Instavel";
+    techLatencyPill.textContent = `Latencia ${elapsed}ms · ${quality}`;
+  } catch {
+    techLatencyPill.textContent = "Latencia indisponivel";
+  }
+}
+
+function initTechTelemetry() {
+  if (!techClockPill || !techLatencyPill) return;
+  updateTechClock();
+  probeTechLatency();
+  window.setInterval(updateTechClock, 1000);
+  window.setInterval(probeTechLatency, 30000);
+}
+
+function getSmartRecommendationItems(limit = 6) {
+  const source = Array.isArray(state.items) ? [...state.items] : [];
+  if (!source.length) return [];
+  const selected = (state.selectedCategory || "all").toLowerCase();
+  const search = (searchInput && searchInput.value ? searchInput.value : "").trim().toLowerCase();
+
+  const scored = source.map((item, index) => {
+    const category = inferCategory(item).toLowerCase();
+    let score = 0;
+    if (isFavorite(item.id)) score += 42;
+    if (item.modelGlb || item.modelUsdz) score += 24;
+    if (selected !== "all" && category === selected) score += 14;
+    if (search && `${item.name || ""} ${item.description || ""}`.toLowerCase().includes(search)) score += 18;
+    const price = Number(item.price || 0);
+    if (price > 0 && price <= 55) score += 8;
+    if ((item.description || "").length > 18) score += 6;
+    const stableShuffle = (String(item.id || index).length * 13 + index * 7) % 9;
+    score += stableShuffle;
+    return { item, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry) => entry.item);
+}
+
+function renderAiRail() {
+  if (!aiRail) return;
+  const items = getSmartRecommendationItems(6);
+  if (!items.length) {
+    aiRail.innerHTML = "";
+    aiRail.classList.add("hidden");
+    return;
+  }
+  aiRail.classList.remove("hidden");
+  aiRail.innerHTML = items
+    .map(
+      (item) => `
+        <article class="ai-card tech-reveal">
+          <span class="status-pill tech">AI Suggest</span>
+          <strong>${escapeHtml(item.name || "Item")}</strong>
+          <p class="muted">R$ ${formatPrice(item.price || 0)}</p>
+          <button type="button" data-ai-add="${escapeHtml(item.id)}">Adicionar rapido</button>
+        </article>
+      `
+    )
+    .join("");
+  aiRail.querySelectorAll("[data-ai-add]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const itemId = button.getAttribute("data-ai-add");
+      if (!itemId) return;
+      addToCart(itemId);
+      trackPublicEvent("ai_recommendation_add", { itemId });
+    });
+  });
+  refreshRevealTargets();
+}
+
+let revealObserver = null;
+
+function ensureRevealObserver() {
+  if (revealObserver || !("IntersectionObserver" in window)) return;
+  revealObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("visible");
+        revealObserver.unobserve(entry.target);
+      });
+    },
+    { threshold: 0.12, rootMargin: "0px 0px -6% 0px" }
+  );
+}
+
+function refreshRevealTargets() {
+  ensureRevealObserver();
+  if (!revealObserver) return;
+  document.querySelectorAll(".menu-section, .mini-form, .quick-action, .ai-card").forEach((node) => {
+    if (node.dataset.revealBound === "1") return;
+    node.dataset.revealBound = "1";
+    node.classList.add("tech-reveal");
+    revealObserver.observe(node);
+  });
+}
+
+function initHeroGestures() {
+  if (!heroTrack) return;
+  heroTrack.addEventListener(
+    "touchstart",
+    (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      state.heroTouchStartX = touch ? touch.clientX : 0;
+    },
+    { passive: true }
+  );
+  heroTrack.addEventListener(
+    "touchend",
+    (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      const endX = touch ? touch.clientX : 0;
+      const delta = endX - state.heroTouchStartX;
+      if (Math.abs(delta) < 34) return;
+      if (delta < 0) {
+        setHeroSlide(state.heroIndex + 1);
+      } else {
+        setHeroSlide(state.heroIndex - 1);
+      }
+    },
+    { passive: true }
+  );
+}
+
+function focusSearchInput() {
+  if (!searchWrap.classList.contains("hidden")) {
+    searchInput.focus();
+    return;
+  }
+  searchWrap.classList.remove("hidden");
+  if (searchToggle) searchToggle.setAttribute("aria-expanded", "true");
+  searchInput.focus();
+}
+
+function startVoiceSearch() {
+  if (!state.voiceRecognition) return;
+  focusSearchInput();
+  if (voiceSearchButton) {
+    voiceSearchButton.textContent = "Ouvindo...";
+    voiceSearchButton.classList.add("active");
+  }
+  try {
+    state.voiceRecognition.start();
+  } catch {
+    // no-op
+  }
+}
+
+function initVoiceSearch() {
+  if (!voiceSearchButton) return;
+  const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionApi) {
+    voiceSearchButton.classList.add("hidden");
+    return;
+  }
+  const recognition = new SpeechRecognitionApi();
+  recognition.lang = (state.language || "pt-BR").replace("_", "-");
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const result = event.results && event.results[0] && event.results[0][0];
+    const transcript = result ? String(result.transcript || "").trim() : "";
+    if (!transcript) return;
+    searchInput.value = transcript;
+    saveSearchTerm(transcript);
+    renderMenu();
+    announce(`Busca por voz: ${transcript}`);
+    trackPublicEvent("voice_search", { meta: { length: transcript.length } });
+  };
+  recognition.onend = () => {
+    if (!voiceSearchButton) return;
+    voiceSearchButton.textContent = "Voz";
+    voiceSearchButton.classList.remove("active");
+  };
+  recognition.onerror = () => {
+    if (!voiceSearchButton) return;
+    voiceSearchButton.textContent = "Voz";
+    voiceSearchButton.classList.remove("active");
+  };
+  state.voiceRecognition = recognition;
+  voiceSearchButton.classList.remove("hidden");
+  voiceSearchButton.addEventListener("click", startVoiceSearch);
+}
+
+function buildCommandShortcuts() {
+  const commands = [
+    {
+      id: "search-focus",
+      label: "Buscar pratos",
+      hint: "Focar no campo de busca",
+      run: () => focusSearchInput()
+    },
+    {
+      id: "open-cart",
+      label: "Abrir pedido",
+      hint: "Abre o carrinho da mesa",
+      run: () => {
+        if (cartButton && !cartButton.classList.contains("hidden")) cartButton.click();
+      }
+    },
+    {
+      id: "toggle-tech",
+      label: state.techModeEnabled ? "Desativar modo tech" : "Ativar modo tech",
+      hint: "Visual super tecnologico",
+      run: () => setTechMode(!state.techModeEnabled)
+    },
+    {
+      id: "toggle-compact",
+      label: "Alternar densidade",
+      hint: "Troca entre compacto e confortavel",
+      run: () => compactToggle && compactToggle.click()
+    },
+    {
+      id: "toggle-favorites",
+      label: "Mostrar favoritos",
+      hint: "Filtra itens favoritos",
+      run: () => favoritesToggle && favoritesToggle.click()
+    },
+    {
+      id: "top",
+      label: "Ir para topo",
+      hint: "Volta para o inicio da pagina",
+      run: () => window.scrollTo({ top: 0, behavior: "smooth" })
+    },
+    {
+      id: "voice",
+      label: "Busca por voz",
+      hint: "Fala o nome do prato",
+      run: () => startVoiceSearch()
+    }
+  ];
+
+  if (reservationForm && !reservationForm.classList.contains("hidden")) {
+    commands.push({
+      id: "form-reservation",
+      label: "Abrir reserva",
+      hint: "Vai para formulario de reserva",
+      run: () => reservationForm.scrollIntoView({ behavior: "smooth", block: "center" })
+    });
+  }
+  if (waitlistForm && !waitlistForm.classList.contains("hidden")) {
+    commands.push({
+      id: "form-waitlist",
+      label: "Abrir fila de espera",
+      hint: "Vai para formulario de fila",
+      run: () => waitlistForm.scrollIntoView({ behavior: "smooth", block: "center" })
+    });
+  }
+
+  state.categories.forEach((category) => {
+    commands.push({
+      id: `category-${normalizeTextKey(category)}`,
+      label: `Filtrar ${translateCategory(category)}`,
+      hint: "Troca categoria do cardapio",
+      run: () => {
+        state.selectedCategory = category;
+        saveSelectedCategory();
+        renderModeStrip();
+        renderTabs();
+        renderMenu();
+      }
+    });
+  });
+
+  state.commandShortcuts = commands;
+}
+
+function renderCommandList() {
+  if (!commandList) return;
+  const query = (commandInput && commandInput.value ? commandInput.value : "").trim().toLowerCase();
+  const base = state.commandShortcuts || [];
+  const filtered = !query
+    ? base
+    : base.filter(
+        (entry) =>
+          entry.label.toLowerCase().includes(query) ||
+          entry.hint.toLowerCase().includes(query) ||
+          entry.id.toLowerCase().includes(query)
+      );
+  state.commandResults = filtered;
+  if (!filtered.length) {
+    state.commandIndex = 0;
+    commandList.innerHTML = `<div class="command-item"><strong>Nenhum comando</strong><span>Tente outro termo.</span></div>`;
+    return;
+  }
+  state.commandIndex = Math.max(0, Math.min(state.commandIndex, filtered.length - 1));
+  commandList.innerHTML = filtered
+    .map(
+      (entry, index) => `
+        <button class="command-item ${index === state.commandIndex ? "active" : ""}" type="button" data-command-id="${escapeHtml(
+          entry.id
+        )}">
+          <strong>${escapeHtml(entry.label)}</strong>
+          <span>${escapeHtml(entry.hint)}</span>
+        </button>
+      `
+    )
+    .join("");
+  commandList.querySelectorAll("[data-command-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.getAttribute("data-command-id");
+      const target = state.commandResults.find((entry) => entry.id === id);
+      if (!target) return;
+      closeCommandPalette();
+      target.run();
+    });
+  });
+}
+
+function openCommandPalette() {
+  if (!commandModal) return;
+  lastFocusedElement = document.activeElement;
+  buildCommandShortcuts();
+  state.commandIndex = 0;
+  commandModal.classList.remove("hidden");
+  commandModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  if (commandInput) {
+    commandInput.value = "";
+    renderCommandList();
+    setTimeout(() => commandInput.focus(), 20);
+  }
+}
+
+function closeCommandPalette() {
+  if (!commandModal) return;
+  commandModal.classList.add("hidden");
+  commandModal.setAttribute("aria-hidden", "true");
+  if (langModal.classList.contains("hidden") && sideOverlay.classList.contains("hidden")) {
+    document.body.style.overflow = "";
+  }
+  if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+    lastFocusedElement.focus();
+  }
+}
+
+function initCommandPalette() {
+  if (commandPaletteToggle) {
+    commandPaletteToggle.addEventListener("click", () => {
+      openCommandPalette();
+    });
+  }
+  if (commandClose) {
+    commandClose.addEventListener("click", () => closeCommandPalette());
+  }
+  if (commandModal) {
+    commandModal.addEventListener("click", (event) => {
+      if (event.target === commandModal) closeCommandPalette();
+    });
+  }
+  if (commandInput) {
+    commandInput.addEventListener("input", () => {
+      state.commandIndex = 0;
+      renderCommandList();
+    });
+  }
 }
 
 function inferCategory(item) {
@@ -1194,6 +1634,7 @@ function renderQuickActions() {
     });
     quickActions.appendChild(button);
   });
+  refreshRevealTargets();
 }
 
 async function loadExternalScript(id, src, afterLoad) {
@@ -1364,6 +1805,7 @@ function updateFormsVisibility() {
       document.body.classList.remove("density-compact");
     }
   }
+  refreshRevealTargets();
 }
 
 function loadCart() {
@@ -1592,7 +2034,10 @@ function renderMenu() {
   menuList.innerHTML = "";
   emptyState.textContent = state.showFavoritesOnly ? "Nenhum favorito." : t("noItemsFound");
   emptyState.classList.toggle("hidden", filteredItems.length > 0);
-  if (filteredItems.length === 0) return;
+  if (filteredItems.length === 0) {
+    renderAiRail();
+    return;
+  }
 
   const sections = new Map();
   filteredItems.forEach((item) => {
@@ -1617,6 +2062,8 @@ function renderMenu() {
   if (selected.length > 0) {
     menuList.appendChild(buildSection(state.selectedCategory, selected));
   }
+  refreshRevealTargets();
+  renderAiRail();
 }
 
 function renderLoadingSkeleton() {
@@ -2079,6 +2526,63 @@ if (backTopButton) {
 document.addEventListener("keydown", (event) => {
   const tagName = (document.activeElement && document.activeElement.tagName) || "";
   const isTypingField = ["INPUT", "TEXTAREA", "SELECT"].includes(tagName);
+  const key = (event.key || "").toLowerCase();
+  const commandModalOpen = commandModal && !commandModal.classList.contains("hidden");
+
+  if ((event.ctrlKey || event.metaKey) && key === "k") {
+    event.preventDefault();
+    if (commandModalOpen) {
+      closeCommandPalette();
+    } else {
+      openCommandPalette();
+    }
+    return;
+  }
+
+  if (commandModalOpen) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCommandPalette();
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      state.commandIndex = Math.min((state.commandResults.length || 1) - 1, state.commandIndex + 1);
+      renderCommandList();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      state.commandIndex = Math.max(0, state.commandIndex - 1);
+      renderCommandList();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const command = state.commandResults[state.commandIndex];
+      if (!command) return;
+      closeCommandPalette();
+      command.run();
+      return;
+    }
+  }
+
+  if (!isTypingField && key === "c" && cartButton && !cartButton.classList.contains("hidden")) {
+    event.preventDefault();
+    cartButton.click();
+    return;
+  }
+  if (!isTypingField && key === "g") {
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  if (!isTypingField && key === "v" && voiceSearchButton && !voiceSearchButton.classList.contains("hidden")) {
+    event.preventDefault();
+    startVoiceSearch();
+    return;
+  }
+
   if (event.key === "/" && !isTypingField && document.activeElement !== searchInput) {
     event.preventDefault();
     if (searchWrap.classList.contains("hidden")) {
@@ -2309,6 +2813,11 @@ if (feedbackForm) {
 
 cartSubmit.addEventListener("click", sendOrder);
 
+initTechModeControls();
+initTechTelemetry();
+initVoiceSearch();
+initCommandPalette();
+initHeroGestures();
 initNetworkPill();
 initInstallPrompt();
 applyVisualSettings();

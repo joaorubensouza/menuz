@@ -78,12 +78,18 @@
 
     <section class="status-strip">
       <span class="status-pill" id="network-pill">Online</span>
+      <span class="status-pill tech hidden" id="tech-clock">--:--</span>
+      <span class="status-pill tech hidden" id="tech-latency">Latencia --</span>
       <button class="status-btn hidden" id="install-app" type="button">Instalar</button>
+      <button class="status-btn hidden" id="voice-search" type="button">Voz</button>
+      <button class="status-btn" id="command-palette-toggle" type="button">Comandos</button>
+      <button class="status-btn" id="tech-mode-toggle" type="button">Tech</button>
       <button class="status-btn" id="compact-toggle" type="button">Compacto</button>
       <button class="status-btn" id="favorites-toggle" type="button">Favoritos</button>
     </section>
 
     <section class="quick-actions hidden" id="quick-actions"></section>
+    <section class="ai-rail hidden" id="ai-rail"></section>
 
     <main class="page" id="main-content">
       <section class="mode-strip" id="mode-strip"></section>
@@ -183,6 +189,17 @@
           </div>
           <p id="cart-message" role="status" aria-live="polite"></p>
         </div>
+      </div>
+    </div>
+
+    <div class="command-modal hidden" id="command-modal" aria-hidden="true">
+      <div class="command-card">
+        <div class="command-head">
+          <h3>Comandos</h3>
+          <button class="close-btn" id="command-close" type="button">Fechar</button>
+        </div>
+        <input id="command-input" type="search" placeholder="Digite um comando ou acao" autocomplete="off" />
+        <div class="command-list" id="command-list"></div>
       </div>
     </div>
 
