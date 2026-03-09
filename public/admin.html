@@ -111,7 +111,7 @@
               <textarea
                 class="input"
                 id="restaurant-integrations"
-                placeholder='Integracoes JSON. Ex: {"quickLinks":{"whatsapp":"https://wa.me/..."}}'
+                placeholder='Integracoes JSON. Ex: {"quickLinks":{"whatsapp":"https://wa.me/..."},"features":{"showLeadForm":true,"showReservationForm":true,"showWaitlistForm":true,"showFeedbackForm":true}}'
               ></textarea>
               <button class="btn" type="submit">Criar restaurante</button>
             </form>
@@ -176,7 +176,7 @@
               <textarea
                 class="input"
                 id="edit-integrations"
-                placeholder='Integracoes JSON'
+                placeholder='Integracoes JSON. Ex: {"features":{"showLeadForm":true}}'
               ></textarea>
               <button class="btn" type="submit">Salvar restaurante</button>
             </form>
@@ -233,6 +233,17 @@
             <h2>Leads e Reservas</h2>
             <button class="btn btn-outline" id="engagement-refresh" type="button">Atualizar</button>
           </div>
+          <div class="engagement-toolbar">
+            <input class="input" id="engagement-search" placeholder="Buscar nome, email, telefone ou comentario" />
+            <select class="input" id="engagement-window">
+              <option value="7">Ultimos 7 dias</option>
+              <option value="30" selected>Ultimos 30 dias</option>
+              <option value="90">Ultimos 90 dias</option>
+              <option value="all">Todo periodo</option>
+            </select>
+            <button class="btn btn-outline" id="engagement-export-all" type="button">Exportar CSV</button>
+          </div>
+          <div class="engagement-stats" id="engagement-stats"></div>
 
           <div class="form-row">
             <div class="panel">

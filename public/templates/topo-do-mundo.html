@@ -95,7 +95,7 @@
         Nenhum item.
       </section>
 
-      <section class="mini-form-grid">
+      <section class="mini-form-grid" id="engagement-forms">
         <form class="mini-form hidden" id="reservation-form">
           <div class="mini-form-head">
             <h2>Reserva</h2>
@@ -121,6 +121,40 @@
             <input id="lead-email" type="email" placeholder="Email" autocomplete="email" />
             <input id="lead-phone" type="tel" placeholder="Telefone" autocomplete="tel" />
             <button type="submit">Receber novidades</button>
+          </div>
+        </form>
+
+        <form class="mini-form hidden" id="waitlist-form">
+          <div class="mini-form-head">
+            <h2>Fila</h2>
+            <span id="waitlist-status" class="muted"></span>
+          </div>
+          <div class="mini-fields">
+            <input id="waitlist-name" type="text" placeholder="Nome" autocomplete="name" />
+            <input id="waitlist-phone" type="tel" placeholder="Telefone" autocomplete="tel" />
+            <input id="waitlist-guests" type="number" min="1" max="20" value="2" placeholder="Pessoas" />
+            <input id="waitlist-eta" type="number" min="0" max="300" step="5" placeholder="Espera (min)" />
+            <button type="submit">Entrar na fila</button>
+          </div>
+        </form>
+
+        <form class="mini-form hidden" id="feedback-form">
+          <div class="mini-form-head">
+            <h2>Feedback</h2>
+            <span id="feedback-status" class="muted"></span>
+          </div>
+          <div class="mini-fields">
+            <input id="feedback-name" type="text" placeholder="Nome" autocomplete="name" />
+            <input id="feedback-email" type="email" placeholder="Email" autocomplete="email" />
+            <select id="feedback-rating">
+              <option value="5">Nota 5</option>
+              <option value="4">Nota 4</option>
+              <option value="3">Nota 3</option>
+              <option value="2">Nota 2</option>
+              <option value="1">Nota 1</option>
+            </select>
+            <textarea id="feedback-comment" rows="2" placeholder="Comentario curto"></textarea>
+            <button type="submit">Enviar feedback</button>
           </div>
         </form>
       </section>

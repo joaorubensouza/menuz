@@ -467,20 +467,27 @@ body {
 .mini-fields {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
 }
 
 .mini-fields-lead {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
 }
 
 .mini-fields input,
+.mini-fields select,
+.mini-fields textarea,
 .mini-fields button {
   min-height: 42px;
   border-radius: 10px;
   border: 1px solid var(--stroke);
   background: #fff;
   padding: 10px;
+}
+
+.mini-fields textarea {
+  resize: vertical;
+  min-height: 72px;
 }
 
 .mini-fields button {

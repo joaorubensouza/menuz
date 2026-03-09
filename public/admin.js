@@ -20,6 +20,10 @@ const state = {
     }
   },
   activeRestaurant: null,
+  engagementFilter: {
+    query: "",
+    windowDays: 30
+  },
   scanStream: null,
   scanItemId: null
 };
@@ -77,6 +81,10 @@ const analyticsTopAr = document.getElementById("analytics-top-ar");
 const analyticsTopOrders = document.getElementById("analytics-top-orders");
 const analyticsAlerts = document.getElementById("analytics-alerts");
 const engagementRefresh = document.getElementById("engagement-refresh");
+const engagementSearch = document.getElementById("engagement-search");
+const engagementWindow = document.getElementById("engagement-window");
+const engagementExportAll = document.getElementById("engagement-export-all");
+const engagementStats = document.getElementById("engagement-stats");
 const leadsList = document.getElementById("leads-list");
 const reservationsList = document.getElementById("reservations-list");
 const waitlistList = document.getElementById("waitlist-list");
@@ -110,6 +118,14 @@ const sectionRestaurant = document.getElementById("restaurant-edit-form");
 const THEME_KEY = "menuz_theme";
 const LANGUAGE_CODES = ["pt-BR", "en-US", "es-ES", "fr-FR", "it-IT", "de-DE"];
 const DEFAULT_LANGUAGE_CODE = "pt-BR";
+
+if (engagementWindow) {
+  const initial = (engagementWindow.value || "30").trim();
+  state.engagementFilter.windowDays = initial === "all" ? 0 : Number(initial) || 30;
+}
+if (engagementSearch) {
+  state.engagementFilter.query = (engagementSearch.value || "").trim();
+}
 
 async function api(path, options = {}) {
   const config = { ...options };
@@ -838,6 +854,27 @@ if (engagementRefresh) {
   });
 }
 
+if (engagementSearch) {
+  engagementSearch.addEventListener("input", () => {
+    state.engagementFilter.query = (engagementSearch.value || "").trim();
+    renderEngagementPanels();
+  });
+}
+
+if (engagementWindow) {
+  engagementWindow.addEventListener("change", () => {
+    const raw = (engagementWindow.value || "30").trim();
+    state.engagementFilter.windowDays = raw === "all" ? 0 : Number(raw) || 30;
+    renderEngagementPanels();
+  });
+}
+
+if (engagementExportAll) {
+  engagementExportAll.addEventListener("click", () => {
+    exportEngagementCsv();
+  });
+}
+
 if (analyticsRefresh) {
   analyticsRefresh.addEventListener("click", () => {
     if (!state.activeRestaurant) return;
@@ -1328,10 +1365,62 @@ function renderSimpleRows(container, rows, renderRowHtml, emptyText) {
   });
 }
 
+function parseDateMs(value) {
+  if (!value) return 0;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function getEngagementWindowMs() {
+  const days = Number(state.engagementFilter.windowDays || 0);
+  if (!Number.isFinite(days) || days <= 0) return 0;
+  return Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+function matchesEngagementFilters(row, fields = []) {
+  const search = (state.engagementFilter.query || "").toLowerCase().trim();
+  const minDateMs = getEngagementWindowMs();
+  if (minDateMs > 0) {
+    const rowDateMs = parseDateMs(row.createdAt || row.updatedAt || "");
+    if (!rowDateMs || rowDateMs < minDateMs) return false;
+  }
+  if (!search) return true;
+  const haystack = fields
+    .map((field) => String((row && row[field]) || ""))
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(search);
+}
+
+function getFilteredEngagementRows(rows, fields = []) {
+  return (rows || []).filter((row) => matchesEngagementFilters(row, fields));
+}
+
+function renderEngagementStats() {
+  if (!engagementStats) return;
+  const stats = [
+    { label: "Leads", value: getFilteredEngagementRows(state.leads, ["name", "email", "phone", "message"]).length },
+    {
+      label: "Reservas",
+      value: getFilteredEngagementRows(state.reservations, ["name", "email", "phone", "date", "time", "status"]).length
+    },
+    { label: "Fila", value: getFilteredEngagementRows(state.waitlist, ["name", "phone"]).length },
+    { label: "Feedback", value: getFilteredEngagementRows(state.feedback, ["name", "email", "comment"]).length }
+  ];
+  engagementStats.innerHTML = "";
+  stats.forEach((entry) => {
+    const chip = document.createElement("div");
+    chip.className = "engagement-chip";
+    chip.textContent = `${entry.label}: ${entry.value}`;
+    engagementStats.appendChild(chip);
+  });
+}
+
 function renderLeads() {
+  const rows = getFilteredEngagementRows(state.leads, ["name", "email", "phone", "message"]);
   renderSimpleRows(
     leadsList,
-    state.leads,
+    rows,
     (lead) =>
       `<div><strong>${lead.name || "Lead"}</strong><div class="muted">${lead.email || lead.phone || "-"}</div></div><span class="muted">${(lead.createdAt || "").slice(0, 10)}</span>`,
     "Sem leads."
@@ -1341,17 +1430,25 @@ function renderLeads() {
 function renderReservations() {
   if (!reservationsList) return;
   reservationsList.innerHTML = "";
-  if (!state.reservations.length) {
+  const rows = getFilteredEngagementRows(state.reservations, [
+    "name",
+    "email",
+    "phone",
+    "date",
+    "time",
+    "status"
+  ]);
+  if (!rows.length) {
     reservationsList.innerHTML = "<div class=\"muted\">Sem reservas.</div>";
     return;
   }
-  state.reservations.forEach((reservation) => {
+  rows.forEach((reservation) => {
     const row = document.createElement("div");
     row.className = "table-row";
     row.innerHTML = `
       <div>
         <strong>${reservation.name || "Reserva"}</strong>
-        <div class="muted">${reservation.guests || 2} pessoas · ${reservation.date || "-"} ${reservation.time || ""}</div>
+        <div class="muted">${reservation.guests || 2} pessoas - ${reservation.date || "-"} ${reservation.time || ""}</div>
       </div>
       <div class="status-badge status-${reservation.status || "novo"}">${reservation.status || "novo"}</div>
       <div class="table-actions">
@@ -1367,9 +1464,10 @@ function renderReservations() {
 }
 
 function renderWaitlist() {
+  const rows = getFilteredEngagementRows(state.waitlist, ["name", "phone"]);
   renderSimpleRows(
     waitlistList,
-    state.waitlist,
+    rows,
     (entry) =>
       `<div><strong>${entry.name || "Fila"}</strong><div class="muted">${entry.guests || 2} pessoas</div></div><span class="muted">${(entry.createdAt || "").slice(0, 10)}</span>`,
     "Sem fila de espera."
@@ -1377,13 +1475,102 @@ function renderWaitlist() {
 }
 
 function renderFeedback() {
+  const rows = getFilteredEngagementRows(state.feedback, ["name", "email", "comment"]);
   renderSimpleRows(
     feedbackList,
-    state.feedback,
+    rows,
     (entry) =>
-      `<div><strong>${entry.name || "Feedback"}</strong><div class="muted">Nota ${entry.rating || 0}/5 · ${(entry.comment || "-").slice(0, 80)}</div></div><span class="muted">${(entry.createdAt || "").slice(0, 10)}</span>`,
+      `<div><strong>${entry.name || "Feedback"}</strong><div class="muted">Nota ${entry.rating || 0}/5 - ${(entry.comment || "-").slice(0, 80)}</div></div><span class="muted">${(entry.createdAt || "").slice(0, 10)}</span>`,
     "Sem feedback."
   );
+}
+
+function renderEngagementPanels() {
+  renderLeads();
+  renderReservations();
+  renderWaitlist();
+  renderFeedback();
+  renderEngagementStats();
+}
+
+function csvEscape(value) {
+  const text = String(value == null ? "" : value);
+  if (!text.includes(",") && !text.includes("\"") && !text.includes("\n")) return text;
+  return `"${text.replace(/"/g, "\"\"")}"`;
+}
+
+function buildEngagementCsvRows() {
+  const rows = [];
+  getFilteredEngagementRows(state.leads, ["name", "email", "phone", "message"]).forEach((lead) => {
+    rows.push({
+      tipo: "lead",
+      data: lead.createdAt || "",
+      nome: lead.name || "",
+      contato: lead.email || lead.phone || "",
+      status: "",
+      nota: "",
+      detalhes: lead.message || ""
+    });
+  });
+  getFilteredEngagementRows(state.reservations, ["name", "email", "phone", "date", "time", "status"]).forEach(
+    (reservation) => {
+      rows.push({
+        tipo: "reserva",
+        data: reservation.createdAt || "",
+        nome: reservation.name || "",
+        contato: reservation.email || reservation.phone || "",
+        status: reservation.status || "novo",
+        nota: "",
+        detalhes: `${reservation.guests || 2} pessoas | ${reservation.date || "-"} ${reservation.time || ""}`.trim()
+      });
+    }
+  );
+  getFilteredEngagementRows(state.waitlist, ["name", "phone"]).forEach((entry) => {
+    rows.push({
+      tipo: "fila",
+      data: entry.createdAt || "",
+      nome: entry.name || "",
+      contato: entry.phone || "",
+      status: "",
+      nota: "",
+      detalhes: `${entry.guests || 2} pessoas`
+    });
+  });
+  getFilteredEngagementRows(state.feedback, ["name", "email", "comment"]).forEach((entry) => {
+    rows.push({
+      tipo: "feedback",
+      data: entry.createdAt || "",
+      nome: entry.name || "",
+      contato: entry.email || "",
+      status: "",
+      nota: entry.rating || "",
+      detalhes: entry.comment || ""
+    });
+  });
+  return rows.sort((a, b) => parseDateMs(b.data) - parseDateMs(a.data));
+}
+
+function exportEngagementCsv() {
+  const rows = buildEngagementCsvRows();
+  if (!rows.length) {
+    alert("Sem dados para exportar neste filtro.");
+    return;
+  }
+  const headers = ["tipo", "data", "nome", "contato", "status", "nota", "detalhes"];
+  const csv = [headers.join(",")]
+    .concat(rows.map((row) => headers.map((key) => csvEscape(row[key])).join(",")))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const now = new Date().toISOString().slice(0, 10);
+  const filename = `engagement-${state.activeRestaurant?.slug || "restaurant"}-${now}.csv`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderOrderActions(status) {
@@ -1560,6 +1747,12 @@ async function selectRestaurant(id) {
   restaurantsPanel.classList.add("hidden");
   manageTitle.textContent = `Gerenciar ${restaurant.name}`;
   fillRestaurantForm(restaurant);
+  if (engagementSearch) engagementSearch.value = "";
+  state.engagementFilter.query = "";
+  if (engagementWindow) {
+    const initial = (engagementWindow.value || "30").trim();
+    state.engagementFilter.windowDays = initial === "all" ? 0 : Number(initial) || 30;
+  }
   if (modelJobsAutoMsg) modelJobsAutoMsg.textContent = "";
   if (state.user.role === "master") {
     clientUserPanel.classList.remove("hidden");
@@ -1774,10 +1967,10 @@ async function loadOrders(restaurantId) {
 async function loadEngagement(restaurantId) {
   try {
     const [leadsData, reservationsData, waitlistData, feedbackData] = await Promise.all([
-      api(`/api/restaurants/${restaurantId}/leads?limit=80`),
-      api(`/api/restaurants/${restaurantId}/reservations?limit=80`),
-      api(`/api/restaurants/${restaurantId}/waitlist?limit=80`),
-      api(`/api/restaurants/${restaurantId}/feedback?limit=80`)
+      api(`/api/restaurants/${restaurantId}/leads?limit=200`),
+      api(`/api/restaurants/${restaurantId}/reservations?limit=200`),
+      api(`/api/restaurants/${restaurantId}/waitlist?limit=200`),
+      api(`/api/restaurants/${restaurantId}/feedback?limit=200`)
     ]);
     state.leads = leadsData.leads || [];
     state.reservations = reservationsData.reservations || [];
@@ -1789,10 +1982,7 @@ async function loadEngagement(restaurantId) {
     state.waitlist = [];
     state.feedback = [];
   }
-  renderLeads();
-  renderReservations();
-  renderWaitlist();
-  renderFeedback();
+  renderEngagementPanels();
 }
 
 async function loadAnalytics(restaurantId) {
@@ -1952,3 +2142,4 @@ initRestaurantLanguageControls();
 initLizzChatbot();
 renderCaptureGuidePreview();
 init();
+

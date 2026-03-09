@@ -470,6 +470,33 @@ textarea {
   font-weight: 800;
 }
 
+.engagement-toolbar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) 180px auto;
+  margin-bottom: 12px;
+}
+
+.engagement-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.engagement-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: #fff;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .tag {
   font-size: 0.74rem;
   letter-spacing: 1.6px;
@@ -871,6 +898,10 @@ model-viewer {
   }
 
   .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .engagement-toolbar {
     grid-template-columns: 1fr;
   }
 

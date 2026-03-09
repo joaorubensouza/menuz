@@ -63,6 +63,7 @@ const installAppButton = document.getElementById("install-app");
 const compactToggle = document.getElementById("compact-toggle");
 const favoritesToggle = document.getElementById("favorites-toggle");
 const quickActions = document.getElementById("quick-actions");
+const engagementForms = document.getElementById("engagement-forms");
 const reservationForm = document.getElementById("reservation-form");
 const reservationNameInput = document.getElementById("reservation-name");
 const reservationPhoneInput = document.getElementById("reservation-phone");
@@ -75,6 +76,18 @@ const leadNameInput = document.getElementById("lead-name");
 const leadEmailInput = document.getElementById("lead-email");
 const leadPhoneInput = document.getElementById("lead-phone");
 const leadStatus = document.getElementById("lead-status");
+const waitlistForm = document.getElementById("waitlist-form");
+const waitlistNameInput = document.getElementById("waitlist-name");
+const waitlistPhoneInput = document.getElementById("waitlist-phone");
+const waitlistGuestsInput = document.getElementById("waitlist-guests");
+const waitlistEtaInput = document.getElementById("waitlist-eta");
+const waitlistStatus = document.getElementById("waitlist-status");
+const feedbackForm = document.getElementById("feedback-form");
+const feedbackNameInput = document.getElementById("feedback-name");
+const feedbackEmailInput = document.getElementById("feedback-email");
+const feedbackRatingInput = document.getElementById("feedback-rating");
+const feedbackCommentInput = document.getElementById("feedback-comment");
+const feedbackStatus = document.getElementById("feedback-status");
 
 const LANGUAGES = [
   { code: "pt-BR", tag: "PT", label: "Português do Brasil", subtitle: "Padrão do restaurante" },
@@ -331,6 +344,7 @@ const categoryKey = slug ? `menuz_category_${slug}` : "menuz_category_template";
 const searchTermKey = slug ? `menuz_search_${slug}` : "menuz_search_template";
 const favoritesKey = slug ? `menuz_favorites_${slug}` : "menuz_favorites_template";
 const densityKey = slug ? `menuz_density_${slug}` : "menuz_density_template";
+const guestProfileKey = slug ? `menuz_guest_${slug}` : "menuz_guest_template";
 let searchDebounceTimer = null;
 let lastFocusedElement = null;
 const TABLE_PATTERN = /^[a-zA-Z0-9\-_.#]{1,32}$/;
@@ -786,8 +800,19 @@ function applyLanguageTexts() {
     favoritesToggle.classList.toggle("active", state.showFavoritesOnly);
   }
   tableInput.placeholder = t("tablePlaceholder");
+  if (reservationNameInput) reservationNameInput.placeholder = "Nome";
   if (reservationPhoneInput) reservationPhoneInput.placeholder = "Telefone";
+  if (reservationGuestsInput) reservationGuestsInput.placeholder = "Pessoas";
+  if (leadNameInput) leadNameInput.placeholder = "Nome";
   if (leadEmailInput) leadEmailInput.placeholder = "Email";
+  if (leadPhoneInput) leadPhoneInput.placeholder = "Telefone";
+  if (waitlistNameInput) waitlistNameInput.placeholder = "Nome";
+  if (waitlistPhoneInput) waitlistPhoneInput.placeholder = "Telefone";
+  if (waitlistGuestsInput) waitlistGuestsInput.placeholder = "Pessoas";
+  if (waitlistEtaInput) waitlistEtaInput.placeholder = "Espera (min)";
+  if (feedbackNameInput) feedbackNameInput.placeholder = "Nome";
+  if (feedbackEmailInput) feedbackEmailInput.placeholder = "Email";
+  if (feedbackCommentInput) feedbackCommentInput.placeholder = "Comentario curto";
   document.documentElement.lang = (state.language || "pt-BR").toLowerCase();
 }
 
@@ -959,6 +984,75 @@ function saveSelectedCategory() {
   }
 }
 
+function loadGuestProfile() {
+  try {
+    const raw = localStorage.getItem(guestProfileKey);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { name: "", phone: "", email: "" };
+    }
+    return {
+      name: String(parsed.name || "").trim().slice(0, 120),
+      phone: String(parsed.phone || "").trim().slice(0, 40),
+      email: String(parsed.email || "").trim().slice(0, 120)
+    };
+  } catch {
+    return { name: "", phone: "", email: "" };
+  }
+}
+
+function saveGuestProfile(nextValues = {}) {
+  const current = loadGuestProfile();
+  const merged = {
+    name: String(nextValues.name || current.name || "").trim().slice(0, 120),
+    phone: String(nextValues.phone || current.phone || "").trim().slice(0, 40),
+    email: String(nextValues.email || current.email || "").trim().slice(0, 120)
+  };
+  try {
+    localStorage.setItem(guestProfileKey, JSON.stringify(merged));
+  } catch {
+    // ignore
+  }
+}
+
+function applyGuestProfileToForms() {
+  const profile = loadGuestProfile();
+  if (reservationNameInput && !reservationNameInput.value) reservationNameInput.value = profile.name;
+  if (reservationPhoneInput && !reservationPhoneInput.value) reservationPhoneInput.value = profile.phone;
+  if (leadNameInput && !leadNameInput.value) leadNameInput.value = profile.name;
+  if (leadPhoneInput && !leadPhoneInput.value) leadPhoneInput.value = profile.phone;
+  if (leadEmailInput && !leadEmailInput.value) leadEmailInput.value = profile.email;
+  if (waitlistNameInput && !waitlistNameInput.value) waitlistNameInput.value = profile.name;
+  if (waitlistPhoneInput && !waitlistPhoneInput.value) waitlistPhoneInput.value = profile.phone;
+  if (feedbackNameInput && !feedbackNameInput.value) feedbackNameInput.value = profile.name;
+  if (feedbackEmailInput && !feedbackEmailInput.value) feedbackEmailInput.value = profile.email;
+}
+
+function setFormStatus(statusNode, message) {
+  if (!statusNode) return;
+  statusNode.textContent = message || "";
+}
+
+function setFormSubmitting(form, isSubmitting) {
+  if (!form) return;
+  form.querySelectorAll("button, input, select, textarea").forEach((field) => {
+    if (field.tagName === "BUTTON" && field.type === "submit") return;
+    field.disabled = Boolean(isSubmitting);
+  });
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (!submitButton) return;
+  if (isSubmitting) {
+    submitButton.dataset.originalLabel = submitButton.textContent || "";
+    submitButton.textContent = "Enviando...";
+    submitButton.disabled = true;
+    return;
+  }
+  submitButton.disabled = false;
+  if (submitButton.dataset.originalLabel) {
+    submitButton.textContent = submitButton.dataset.originalLabel;
+  }
+}
+
 function getIntegrations() {
   const base = state.restaurant && state.restaurant.integrations ? state.restaurant.integrations : {};
   const quickLinks = base.quickLinks && typeof base.quickLinks === "object" ? base.quickLinks : {};
@@ -1038,6 +1132,7 @@ function renderQuickActions() {
   const integrations = getIntegrations();
   const links = integrations.quickLinks || {};
   const payments = integrations.payments || {};
+  const features = integrations.features || {};
   const actions = [
     { label: "WhatsApp", url: links.whatsapp, eventType: "social_open" },
     { label: "Reservar", url: links.reservation, eventType: "reservation_submit" },
@@ -1050,9 +1145,18 @@ function renderQuickActions() {
     { label: "Stripe", url: payments.stripeCheckoutUrl, eventType: "checkout_start" },
     { label: "PayPal", url: payments.paypalMeUrl, eventType: "checkout_start" }
   ].filter((action) => action.url);
+  if (features.showReservationForm) {
+    actions.push({ label: "Reserva rapida", targetId: "reservation-form", eventType: "reservation_submit" });
+  }
+  if (features.showWaitlistForm) {
+    actions.push({ label: "Entrar na fila", targetId: "waitlist-form", eventType: "waitlist_join" });
+  }
+  if (features.showFeedbackForm) {
+    actions.push({ label: "Avaliar", targetId: "feedback-form", eventType: "feedback_submit" });
+  }
 
   quickActions.innerHTML = "";
-  if (!actions.length || integrations.features?.enableQuickActions === false) {
+  if (!actions.length || features.enableQuickActions === false) {
     quickActions.classList.add("hidden");
     return;
   }
@@ -1071,6 +1175,18 @@ function renderQuickActions() {
           announce("Chave copiada.");
         } catch {
           announce("Nao foi possivel copiar agora.");
+        }
+        return;
+      }
+      if (action.targetId) {
+        const section = document.getElementById(action.targetId);
+        if (section) {
+          section.scrollIntoView({ behavior: "smooth", block: "center" });
+          const firstField = section.querySelector("input,select,textarea,button");
+          if (firstField && typeof firstField.focus === "function") {
+            setTimeout(() => firstField.focus(), 250);
+          }
+          trackPublicEvent(action.eventType || "menu_view");
         }
         return;
       }
@@ -1214,11 +1330,39 @@ function initInstallPrompt() {
 function updateFormsVisibility() {
   const integrations = getIntegrations();
   const features = integrations.features || {};
+  const showReservation = Boolean(features.showReservationForm);
+  const showLead = Boolean(features.showLeadForm);
+  const showWaitlist = Boolean(features.showWaitlistForm);
+  const showFeedback = Boolean(features.showFeedbackForm);
   if (reservationForm) {
-    reservationForm.classList.toggle("hidden", !features.showReservationForm);
+    reservationForm.classList.toggle("hidden", !showReservation);
   }
   if (leadForm) {
-    leadForm.classList.toggle("hidden", !features.showLeadForm);
+    leadForm.classList.toggle("hidden", !showLead);
+  }
+  if (waitlistForm) {
+    waitlistForm.classList.toggle("hidden", !showWaitlist);
+  }
+  if (feedbackForm) {
+    feedbackForm.classList.toggle("hidden", !showFeedback);
+  }
+  if (engagementForms) {
+    const hasVisibleForm = showReservation || showLead || showWaitlist || showFeedback;
+    engagementForms.classList.toggle("hidden", !hasVisibleForm);
+  }
+  if (favoritesToggle) {
+    const favoritesEnabled = features.enableFavorites !== false;
+    favoritesToggle.classList.toggle("hidden", !favoritesEnabled);
+    if (!favoritesEnabled) {
+      state.showFavoritesOnly = false;
+    }
+  }
+  if (compactToggle) {
+    const compactEnabled = features.enableCompactMode !== false;
+    compactToggle.classList.toggle("hidden", !compactEnabled);
+    if (!compactEnabled) {
+      document.body.classList.remove("density-compact");
+    }
   }
 }
 
@@ -1408,7 +1552,7 @@ function buildSection(title, items) {
           <a data-ar-link href="${itemArUrl}">${escapeHtml(t("ar"))}</a>
           <button type="button" data-add>${escapeHtml(t("add"))}</button>
           <button type="button" class="favorite-btn ${isFavorite(item.id) ? "active" : ""}" data-favorite>
-            ${isFavorite(item.id) ? "❤" : "♡"}
+            ${isFavorite(item.id) ? "Favorito" : "Favoritar"}
           </button>
         </div>
       </div>
@@ -1744,6 +1888,7 @@ async function loadRestaurant() {
     setTheme();
     applyVisualSettings();
     applyLanguageTexts();
+    applyGuestProfileToForms();
     renderDrawer();
     renderQuickActions();
     updateFormsVisibility();
@@ -1986,75 +2131,179 @@ if (favoritesToggle) {
   });
 }
 
+function getPublicSubmitError(response, fallback) {
+  if (!response) return fallback;
+  if (response.status === 429) return "Muitas tentativas. Aguarde e tente de novo.";
+  if (response.status === 400) return "Dados invalidos. Revise os campos.";
+  return fallback;
+}
+
+async function submitPublicForm({
+  form,
+  statusNode,
+  endpoint,
+  payload,
+  successMessage,
+  errorMessage,
+  eventType,
+  eventMeta
+}) {
+  if (!form || !state.restaurant || !state.restaurant.slug) return false;
+  setFormStatus(statusNode, "");
+  setFormSubmitting(form, true);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurantSlug: state.restaurant.slug,
+        source: "menu_public",
+        ...payload
+      })
+    });
+    if (!response.ok) {
+      setFormStatus(statusNode, getPublicSubmitError(response, errorMessage));
+      return false;
+    }
+    setFormStatus(statusNode, successMessage);
+    if (eventType) {
+      trackPublicEvent(eventType, { meta: eventMeta || {} });
+    }
+    announce(successMessage);
+    setTimeout(() => {
+      if (statusNode && statusNode.textContent === successMessage) {
+        statusNode.textContent = "";
+      }
+    }, 5000);
+    return true;
+  } catch {
+    setFormStatus(statusNode, errorMessage);
+    return false;
+  } finally {
+    setFormSubmitting(form, false);
+  }
+}
+
 if (reservationForm) {
   reservationForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!state.restaurant || !state.restaurant.slug) return;
     const payload = {
-      restaurantSlug: state.restaurant.slug,
       name: (reservationNameInput && reservationNameInput.value ? reservationNameInput.value : "").trim(),
       phone: (reservationPhoneInput && reservationPhoneInput.value ? reservationPhoneInput.value : "").trim(),
       guests: Number(reservationGuestsInput && reservationGuestsInput.value ? reservationGuestsInput.value : 2) || 2,
       date: reservationDateInput && reservationDateInput.value ? reservationDateInput.value : "",
-      time: reservationTimeInput && reservationTimeInput.value ? reservationTimeInput.value : "",
-      source: "menu_public"
+      time: reservationTimeInput && reservationTimeInput.value ? reservationTimeInput.value : ""
     };
     if (!payload.name || !payload.phone) {
-      if (reservationStatus) reservationStatus.textContent = "Informe nome e telefone.";
+      setFormStatus(reservationStatus, "Informe nome e telefone.");
       return;
     }
-    if (reservationStatus) reservationStatus.textContent = "Enviando...";
-    try {
-      const response = await fetch("/api/public/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        if (reservationStatus) reservationStatus.textContent = "Falha ao enviar.";
-        return;
-      }
-      if (reservationStatus) reservationStatus.textContent = "Reserva enviada.";
-      reservationForm.reset();
-      announce("Reserva enviada.");
-    } catch {
-      if (reservationStatus) reservationStatus.textContent = "Falha ao enviar.";
-    }
+    saveGuestProfile({ name: payload.name, phone: payload.phone });
+    const ok = await submitPublicForm({
+      form: reservationForm,
+      statusNode: reservationStatus,
+      endpoint: "/api/public/reservations",
+      payload,
+      successMessage: "Reserva enviada.",
+      errorMessage: "Falha ao enviar reserva.",
+      eventType: "reservation_submit",
+      eventMeta: { guests: payload.guests || 0 }
+    });
+    if (!ok) return;
+    reservationForm.reset();
+    if (reservationGuestsInput) reservationGuestsInput.value = "2";
+    if (reservationDateInput) reservationDateInput.value = new Date().toISOString().slice(0, 10);
+    applyGuestProfileToForms();
   });
 }
 
 if (leadForm) {
   leadForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!state.restaurant || !state.restaurant.slug) return;
     const payload = {
-      restaurantSlug: state.restaurant.slug,
       name: (leadNameInput && leadNameInput.value ? leadNameInput.value : "").trim(),
       email: (leadEmailInput && leadEmailInput.value ? leadEmailInput.value : "").trim(),
-      phone: (leadPhoneInput && leadPhoneInput.value ? leadPhoneInput.value : "").trim(),
-      source: "menu_public"
+      phone: (leadPhoneInput && leadPhoneInput.value ? leadPhoneInput.value : "").trim()
     };
     if (!payload.email && !payload.phone) {
-      if (leadStatus) leadStatus.textContent = "Informe email ou telefone.";
+      setFormStatus(leadStatus, "Informe email ou telefone.");
       return;
     }
-    if (leadStatus) leadStatus.textContent = "Enviando...";
-    try {
-      const response = await fetch("/api/public/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        if (leadStatus) leadStatus.textContent = "Falha ao enviar.";
-        return;
-      }
-      if (leadStatus) leadStatus.textContent = "Contato salvo.";
-      leadForm.reset();
-      announce("Contato salvo.");
-    } catch {
-      if (leadStatus) leadStatus.textContent = "Falha ao enviar.";
+    saveGuestProfile({ name: payload.name, phone: payload.phone, email: payload.email });
+    const ok = await submitPublicForm({
+      form: leadForm,
+      statusNode: leadStatus,
+      endpoint: "/api/public/leads",
+      payload,
+      successMessage: "Contato salvo.",
+      errorMessage: "Falha ao salvar contato.",
+      eventType: "lead_submit"
+    });
+    if (!ok) return;
+    leadForm.reset();
+    applyGuestProfileToForms();
+  });
+}
+
+if (waitlistForm) {
+  waitlistForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = {
+      name: (waitlistNameInput && waitlistNameInput.value ? waitlistNameInput.value : "").trim(),
+      phone: (waitlistPhoneInput && waitlistPhoneInput.value ? waitlistPhoneInput.value : "").trim(),
+      guests: Number(waitlistGuestsInput && waitlistGuestsInput.value ? waitlistGuestsInput.value : 2) || 2,
+      etaMinutes: Number(waitlistEtaInput && waitlistEtaInput.value ? waitlistEtaInput.value : 0) || 0
+    };
+    if (!payload.name || !payload.phone) {
+      setFormStatus(waitlistStatus, "Informe nome e telefone.");
+      return;
     }
+    saveGuestProfile({ name: payload.name, phone: payload.phone });
+    const ok = await submitPublicForm({
+      form: waitlistForm,
+      statusNode: waitlistStatus,
+      endpoint: "/api/public/waitlist",
+      payload,
+      successMessage: "Entrada na fila confirmada.",
+      errorMessage: "Falha ao entrar na fila.",
+      eventType: "waitlist_join",
+      eventMeta: { guests: payload.guests || 0 }
+    });
+    if (!ok) return;
+    waitlistForm.reset();
+    if (waitlistGuestsInput) waitlistGuestsInput.value = "2";
+    applyGuestProfileToForms();
+  });
+}
+
+if (feedbackForm) {
+  feedbackForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = {
+      name: (feedbackNameInput && feedbackNameInput.value ? feedbackNameInput.value : "").trim(),
+      email: (feedbackEmailInput && feedbackEmailInput.value ? feedbackEmailInput.value : "").trim(),
+      rating: Number(feedbackRatingInput && feedbackRatingInput.value ? feedbackRatingInput.value : 5) || 5,
+      comment: (feedbackCommentInput && feedbackCommentInput.value ? feedbackCommentInput.value : "").trim()
+    };
+    if (!payload.comment && !payload.email) {
+      setFormStatus(feedbackStatus, "Informe comentario ou email.");
+      return;
+    }
+    saveGuestProfile({ name: payload.name, email: payload.email });
+    const ok = await submitPublicForm({
+      form: feedbackForm,
+      statusNode: feedbackStatus,
+      endpoint: "/api/public/feedback",
+      payload,
+      successMessage: "Feedback enviado.",
+      errorMessage: "Falha ao enviar feedback.",
+      eventType: "feedback_submit",
+      eventMeta: { rating: payload.rating || 0 }
+    });
+    if (!ok) return;
+    feedbackForm.reset();
+    if (feedbackRatingInput) feedbackRatingInput.value = "5";
+    applyGuestProfileToForms();
   });
 }
 
