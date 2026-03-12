@@ -339,6 +339,42 @@
       "modelUsdz": "/uploads/models/GABS.usdz",
       "category": "Pratos Principais",
       "scans": []
+    },
+    {
+      "id": "i-topo-pt1",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D PT1",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 98.9,
+      "image": "",
+      "modelGlb": "/uploads/models/pt1.glb",
+      "modelUsdz": "/uploads/models/pt1.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-topo-pt2",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D PT2",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 104.9,
+      "image": "",
+      "modelGlb": "/uploads/models/pt2.glb",
+      "modelUsdz": "/uploads/models/pt2.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-topo-pt3",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D PT3",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 112.9,
+      "image": "",
+      "modelGlb": "/uploads/models/pt3.glb",
+      "modelUsdz": "/uploads/models/pt3.usdz",
+      "category": "Pratos Principais",
+      "scans": []
     }
   ],
   "orders": [

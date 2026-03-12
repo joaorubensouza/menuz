@@ -30,6 +30,12 @@ const ua = navigator.userAgent || "";
 const isIOS = /iPhone|iPad|iPod/i.test(ua);
 const isAndroid = /Android/i.test(ua);
 const GABS_ITEM_ID = "i-topo-gabs";
+const SCALE_ITEM_IDS = new Set([
+  GABS_ITEM_ID,
+  "i-topo-pt1",
+  "i-topo-pt2",
+  "i-topo-pt3"
+]);
 const SCALE_STORAGE_PREFIX = "menuz_item_scale_";
 const SCALE_MIN = 50;
 const SCALE_MAX = 200;
@@ -83,9 +89,17 @@ function applyTheme() {
 
 function supportsScaleControls(item) {
   if (!item) return false;
-  if ((item.id || "") === GABS_ITEM_ID) return true;
+  if (SCALE_ITEM_IDS.has(item.id || "")) return true;
   const glb = (item.modelGlb || "").toLowerCase();
   const usdz = (item.modelUsdz || "").toLowerCase();
+  const isPtModel =
+    glb.includes("/uploads/models/pt1.") ||
+    glb.includes("/uploads/models/pt2.") ||
+    glb.includes("/uploads/models/pt3.") ||
+    usdz.includes("/uploads/models/pt1.") ||
+    usdz.includes("/uploads/models/pt2.") ||
+    usdz.includes("/uploads/models/pt3.");
+  if (isPtModel) return true;
   return glb.includes("/gabs.glb") || usdz.includes("/gabs.usdz");
 }
 
@@ -205,7 +219,7 @@ function configureModelViewer(item) {
     arHint.textContent = "No Android, publique o arquivo GLB.";
     setFallback("Este item ainda nao tem GLB para Scene Viewer.");
   } else if (canScale) {
-    arHint.textContent = "No prato GABS, ajuste a escala e tambem use pinca no AR para redimensionar.";
+    arHint.textContent = "Ajuste a escala e use pinca no AR para redimensionar.";
   }
 
   updateScaleControls(item);
