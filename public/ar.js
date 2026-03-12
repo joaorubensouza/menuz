@@ -1,6 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const itemId = params.get("id");
-const autoOpenAr = params.get("openAr") === "1";
+const autoOpenArRequested = params.get("openAr") === "1";
 const THEME_KEY = "menuz_theme";
 
 const modelViewer = document.getElementById("modelViewer");
@@ -293,6 +293,7 @@ async function loadItem() {
   updateBackLink(restaurant);
 
   const hasModel = Boolean(item.modelGlb || item.modelUsdz);
+  const canScale = supportsScaleControls(item);
   configureModelViewer(item);
 
   if (!hasModel) {
@@ -303,7 +304,7 @@ async function loadItem() {
     return;
   }
 
-  if (autoOpenAr) {
+  if (autoOpenArRequested && !canScale) {
     arHint.textContent = "Abrindo AR...";
     // Some devices need a short delay after model load before launching AR.
     setTimeout(() => {
@@ -376,6 +377,9 @@ if (modelViewer) {
   modelViewer.addEventListener("load", () => {
     if (!arFallback.textContent) {
       setFallback("");
+    }
+    if (activeItem && supportsScaleControls(activeItem)) {
+      applyViewerScale(loadSavedScale(activeItem));
     }
   });
 }
