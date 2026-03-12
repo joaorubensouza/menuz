@@ -34,7 +34,10 @@ const SCALE_ITEM_IDS = new Set([
   GABS_ITEM_ID,
   "i-topo-pt1",
   "i-topo-pt2",
-  "i-topo-pt3"
+  "i-topo-pt3",
+  "i-topo-bruno1",
+  "i-topo-bruno2",
+  "i-topo-bruno3a"
 ]);
 const SCALE_STORAGE_PREFIX = "menuz_item_scale_";
 const SCALE_MIN = 50;

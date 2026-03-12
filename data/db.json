@@ -375,6 +375,42 @@
       "modelUsdz": "/uploads/models/pt3.usdz",
       "category": "Pratos Principais",
       "scans": []
+    },
+    {
+      "id": "i-topo-bruno1",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D Bruno 1",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 118.9,
+      "image": "",
+      "modelGlb": "/uploads/models/bruno1.glb",
+      "modelUsdz": "/uploads/models/bruno1.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-topo-bruno2",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D Bruno 2",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 124.9,
+      "image": "",
+      "modelGlb": "/uploads/models/bruno2.glb",
+      "modelUsdz": "/uploads/models/bruno2.usdz",
+      "category": "Pratos Principais",
+      "scans": []
+    },
+    {
+      "id": "i-topo-bruno3a",
+      "restaurantId": "r-topo-mg",
+      "name": "Prato 3D Bruno 3A",
+      "description": "Novo prato 3D com escala liberada.",
+      "price": 132.9,
+      "image": "",
+      "modelGlb": "/uploads/models/bruno3a.glb",
+      "modelUsdz": "/uploads/models/bruno3a.usdz",
+      "category": "Pratos Principais",
+      "scans": []
     }
   ],
   "orders": [
